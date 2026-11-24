@@ -16,7 +16,7 @@ Résultat :
 In the beginning was the Word.
 ```
 
-L’indice oriente vers le traitement de texte, mais il ne permet pas à lui seul d’identifier M4. Les notes connaissent déjà le service Babel. Pour rendre la découverte entièrement reproductible, il faudrait conserver la sortie de la recherche initiale des services et des fichiers liés au niveau.
+L’indice oriente vers le traitement de texte. L’identification de M4 repose ensuite sur la recherche des services et des fichiers liés au niveau ; la sortie de cette recherche reste à conserver sur la VM.
 
 ## 2. Vérifier le service et les permissions
 
@@ -139,19 +139,19 @@ rm -f /tmp/template.m4.bak
 
 Les notes confirment que les empreintes étaient identiques après restauration et que le fichier généré ne contenait plus le secret.
 
-## 8. Valider le secret
+## 8. Passer à `level05`
 
 ```bash
-ssh -p 4242 level05@localhost
+su - level05
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level05`. La connexion a réussi avec la valeur récupérée, également conservée dans `level04/flag`.
+Résultat attendu : `level05`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level04/flag`.
 
 ## Pourquoi cette méthode fonctionne
 

@@ -18,7 +18,7 @@ Les notes indiquent que `level08` appartient au groupe `blacksun`. Deux fichiers
 /opt/snowcrash/level08/blacksun.c
 ```
 
-Le second contient le code source du service. Le lire évite de deviner son protocole :
+Le second contient le code source qui définit le protocole du service :
 
 ```bash
 cat /opt/snowcrash/level08/blacksun.c
@@ -33,7 +33,7 @@ Le source révèle notamment :
 - le chemin `/home/flag08/.flag` ;
 - la vérification d’état incorrecte.
 
-Le fichier `blacksun.c` n’a pas été copié dans le dépôt. Les extraits qui justifient le format et la faille doivent donc être conservés depuis la VM pour une présentation complète.
+Une présentation complète devra conserver depuis la VM les extraits de `blacksun.c` qui définissent le format et la faille.
 
 ## 2. Comprendre le socket Unix
 
@@ -50,9 +50,9 @@ client Python
 service Black Sun
 ```
 
-Le groupe `blacksun` possède les permissions nécessaires pour contacter ce socket. Cela autorise `level08` à envoyer des messages au service, mais ne devrait pas suffire à obtenir une opération administrative.
+Le groupe `blacksun` possède les permissions nécessaires pour contacter ce socket. L’autorisation des opérations administratives dépend ensuite du contrôle d’état implémenté par le service.
 
-La clé `/etc/blacksun/auth.key` reste inaccessible à `level08`. La solution ne tente pas de la lire.
+La solution exploite le contrôle d’état et laisse intacte la clé `/etc/blacksun/auth.key`.
 
 ## 3. Comprendre les états d’authentification
 
@@ -79,7 +79,7 @@ La séquence devient donc :
 HELLO → état AUTH → ADMIN accepté
 ```
 
-Il n’est pas nécessaire d’envoyer la commande `AUTH` ni de connaître la clé. L’état intermédiaire obtenu après `HELLO` est traité à tort comme une autorisation suffisante.
+La séquence utile se limite à `HELLO`, puis `ADMIN`. L’état intermédiaire obtenu après `HELLO` est traité à tort comme une autorisation suffisante.
 
 ## 4. Comprendre l’encodage binaire
 
@@ -130,7 +130,7 @@ Pour le payload `ad de`, le calcul est :
 (0xad XOR 0) XOR (0xde XOR 1) = 0x72
 ```
 
-Le checksum permet de détecter un message mal formé ou altéré. Il ne prouve pas l’identité de l’expéditeur et ne remplace donc pas une authentification.
+Le checksum contrôle la structure et l’intégrité du message. L’identité de l’expéditeur doit être vérifiée séparément par le mécanisme d’authentification.
 
 ## 6. Construire l’en-tête
 
@@ -200,14 +200,13 @@ Le bloc `with socket.socket(...) as sock` garantit la fermeture du socket à la 
 
 ## 8. Exécuter le client
 
-Depuis la racine du dépôt, copier le client sur la VM puis ouvrir une session :
+Depuis un terminal hôte, copier le client sur la VM pendant que la session initiale reste ouverte :
 
 ```bash
 scp -P 4242 level08/resources/client.py level08@localhost:/tmp/blacksun_client.py
-ssh -p 4242 level08@localhost
 ```
 
-Dans la VM, lancer :
+Revenir dans la session existante, sous `level08`, puis lancer :
 
 ```bash
 python3 /tmp/blacksun_client.py
@@ -227,35 +226,35 @@ Supprimer ensuite le fichier temporaire :
 rm -f /tmp/blacksun_client.py
 ```
 
-## 9. Valider le secret
+## 9. Passer à `level09`
 
 ```bash
-ssh -p 4242 level09@localhost
+su - level09
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level09`. La connexion a réussi avec la valeur récupérée, également conservée dans `level08/flag`.
+Résultat attendu : `level09`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level08/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
-Le service confond progression dans le protocole et authentification réussie. `HELLO` place la connexion dans un état qui satisfait déjà la condition trop permissive d’`ADMIN`. Le client respecte le format binaire et le checksum attendus, mais n’apporte aucune preuve d’identité.
+Le service confond progression dans le protocole et authentification réussie. `HELLO` place la connexion dans un état qui satisfait déjà la condition trop permissive d’`ADMIN`. Le client respecte le format binaire et le checksum attendus, puis cette condition autorise la commande.
 
-Il s’agit d’une erreur de logique métier et de contrôle d’autorisation, pas d’une faiblesse du XOR ou du socket Unix.
+L’erreur se situe dans la logique métier et le contrôle d’autorisation. Le XOR et le socket Unix servent uniquement au transport du message.
 
 ## Limites et portabilité
 
-Le code C utilise des champs de bits dont l’organisation dépend de l’ABI. Les octets documentés correspondent à la VM x86_64 du niveau et ne doivent pas être supposés identiques sur toutes les machines. Le client impose explicitement le little-endian pour les autres champs avec le préfixe `<` de `struct`.
+Le code C utilise des champs de bits dont l’organisation dépend de l’ABI. Les octets documentés correspondent à la VM x86_64 du niveau ; une autre ABI peut produire un ordre différent. Le client impose explicitement le little-endian pour les autres champs avec le préfixe `<` de `struct`.
 
-La syntaxe du client et les octets générés ont été vérifiés localement, mais le service Black Sun n’est pas disponible hors de la VM. La réponse du service et le flag sont rapportés comme confirmés sur celle-ci.
+La vérification locale couvre la syntaxe du client et les octets générés. La VM fournit la validation du service, de sa réponse et du flag.
 
 ## À expliquer à l’évaluation
 
-> J’ai lu le code source pour reconstruire le protocole. `HELLO` fait passer la connexion à l’état `AUTH`, puis la vérification d’`ADMIN` accepte déjà cet état sans preuve d’authentification. Mon client encode deux messages conformes et calcule leur checksum, mais ce checksum ne prouve pas l’identité. La séquence `HELLO` puis `ADMIN` obtient donc le flag, que j’ai validé avec `level09`.
+> J’ai lu le code source pour reconstruire le protocole. `HELLO` fait passer la connexion à l’état `AUTH`, puis la vérification d’`ADMIN` accepte déjà cet état. Mon client encode deux messages conformes et calcule leur checksum. La séquence `HELLO` puis `ADMIN` obtient donc le flag, puis `su` permet de passer à `level09`.
 
 ## Traçabilité et références
 

@@ -16,7 +16,7 @@ Résultat :
 Da5id saw something he shouldn't have.
 ```
 
-Le nom `Da5id` oriente vers un programme du même nom. L’indice ne fournit pas directement le token.
+Le nom `Da5id` oriente vers le programme à examiner ; `strings` permet ensuite d’y rechercher le token.
 
 ## 2. Localiser et identifier le programme
 
@@ -61,7 +61,7 @@ La chaîne intéressante rapportée est :
 Iheartpwnage
 ```
 
-Une chaîne présente dans un programme peut être un message, un chemin, une donnée de test ou un secret. Sa présence constitue donc une piste, pas encore une preuve de son rôle.
+Une chaîne présente dans un programme peut être un message, un chemin, une donnée de test ou un secret. `Iheartpwnage` devient donc une candidate à tester avec le programme.
 
 ## 4. Tester le token
 
@@ -85,27 +85,27 @@ s19q3m3u4toaequegh8ahpicel
 
 `Iheartpwnage` contient 12 caractères. Les messages `checking byte 0...` à `checking byte 11...` indiquent que le programme contrôle chacun de ces caractères avant d’accepter le token.
 
-Cette exécution fournit la preuve qui manquait après `strings` : la chaîne n’est pas seulement présente dans le binaire, elle constitue bien l’entrée attendue.
+Le message `TOKEN ACCEPTED.` confirme que la chaîne constitue l’entrée attendue.
 
-## 5. Valider le secret
+## 5. Passer à `level10`
 
 ```bash
-ssh -p 4242 level10@localhost
+su - level10
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le flag comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level10`. La connexion a réussi avec le flag affiché par `da5id`, également conservé dans `level09/flag`.
+Résultat attendu : `level10`. Le passage au compte suivant a réussi avec le flag affiché par `da5id`, également conservé dans `level09/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
 Le token a été intégré au binaire sous une forme lisible. `strings` permet de le repérer sans désassembler le programme. Le binaire setuid valide ensuite ce token avec les droits effectifs de `flag09`, ce qui lui permet de lire et d’afficher le flag.
 
-Aucun brute-force n’est nécessaire : une seule candidate significative est découverte par analyse statique, puis validée par le programme.
+L’analyse statique fournit une candidate significative, ensuite validée par le programme.
 
 ## Différence avec le Level00
 
@@ -113,12 +113,12 @@ Les deux niveaux examinent des données lisibles dans un fichier compilé, mais 
 
 | Niveau | Donnée découverte | Étape suivante |
 | --- | --- | --- |
-| Level00 | Le flag lui-même dans une section ELF dédiée. | Valider directement le flag par SSH. |
+| Level00 | Le flag lui-même dans une section ELF dédiée. | Utiliser directement le flag pour passer à `level01`. |
 | Level09 | Un token accepté par le programme. | Exécuter `da5id` avec ce token pour obtenir le flag. |
 
 ## À expliquer à l’évaluation
 
-> Le README m’a orienté vers le binaire `da5id`. Après avoir vérifié son type, ses permissions et son bit setuid, j’ai utilisé `strings` pour repérer `Iheartpwnage`. Une chaîne trouvée dans un binaire n’étant pas automatiquement un mot de passe, je l’ai passée une seule fois au programme. Celui-ci a confirmé le token et affiché le flag avec les droits de `flag09`, puis j’ai validé ce flag avec `level10`.
+> Le README m’a orienté vers le binaire `da5id`. Après avoir vérifié son type, ses permissions et son bit setuid, j’ai utilisé `strings` pour repérer `Iheartpwnage`. J’ai testé cette candidate une seule fois ; le programme a confirmé le token et affiché le flag avec les droits de `flag09`. J’ai ensuite utilisé `su` pour passer à `level10`.
 
 ## Traçabilité et références
 

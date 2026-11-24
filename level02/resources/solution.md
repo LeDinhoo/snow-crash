@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Comprendre les conséquences d’une mauvaise gestion des permissions. Un fichier temporaire n’est pas automatiquement privé : son emplacement et ses droits doivent être contrôlés comme ceux de n’importe quel autre fichier.
+Comprendre les conséquences d’une mauvaise gestion des permissions. La confidentialité d’un fichier temporaire dépend de son emplacement, de ses droits et de sa suppression après usage.
 
 ## 1. Lire l’indice
 
@@ -42,7 +42,7 @@ Le résultat intéressant est :
 /tmp/kourier_delivery.tmp
 ```
 
-Le répertoire `/tmp` sert aux fichiers temporaires. Cela ne signifie pas que tous ses fichiers sont lisibles par tous : il faut examiner les permissions du fichier trouvé.
+Le répertoire `/tmp` sert aux fichiers temporaires. Les permissions du fichier trouvé déterminent quels utilisateurs peuvent le lire.
 
 ## 3. Vérifier la nature et les droits du fichier
 
@@ -68,17 +68,17 @@ Le fichier révèle le secret :
 qi0mauch9ahksha8b6dfe3p0kq
 ```
 
-`cat` suffit : aucune élévation de privilèges et aucun contournement des permissions ne sont nécessaires.
+Le droit de lecture accordé à `level02` permet d’afficher directement le contenu avec `cat`.
 
-## 5. Valider le secret
+## 5. Passer à `level03`
 
-Utiliser la valeur récupérée comme mot de passe de `level03` :
+Dans la session existante, changer d’utilisateur avec la valeur récupérée :
 
 ```bash
-ssh -p 4242 level03@localhost
+su - level03
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
@@ -90,17 +90,17 @@ Résultat attendu :
 level03
 ```
 
-La connexion à `level03` a réussi avec cette valeur. Le secret est également conservé dans le fichier `level02/flag` du dépôt.
+Le passage à `level03` a réussi avec cette valeur. Le secret est également conservé dans le fichier `level02/flag` du dépôt.
 
 ## Pourquoi cette méthode fonctionne
 
-Le propriétaire a laissé une information confidentielle dans un fichier temporaire lisible par les autres utilisateurs. La faille ne vient pas de `/tmp` lui-même, mais des permissions trop larges et de l’absence de suppression du fichier après usage.
+Le propriétaire a laissé une information confidentielle dans un fichier temporaire lisible par les autres utilisateurs. Les permissions trop larges et la conservation du fichier après usage exposent son contenu.
 
 Un fichier sensible devrait être créé avec des droits restrictifs, dans un emplacement approprié, puis supprimé dès qu’il n’est plus nécessaire.
 
 ## À expliquer à l’évaluation
 
-> L’indice suggérait qu’un « paquet » restait présent après sa livraison. J’ai recherché les fichiers appartenant à `flag02`, puis vérifié les droits du fichier temporaire découvert. Je n’ai pas contourné les permissions Linux : les permissions accordées étaient elles-mêmes incorrectes et permettaient à `level02` de lire le secret.
+> L’indice suggérait qu’un « paquet » restait présent après sa livraison. J’ai recherché les fichiers appartenant à `flag02`, puis vérifié les droits du fichier temporaire découvert. Les permissions accordées permettaient directement à `level02` de lire le secret.
 
 ## Traçabilité à conserver
 

@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Comprendre l’introspection Python et pourquoi masquer quelques fonctions ne suffit pas à créer une isolation sûre. Tant que l’interpréteur permet de parcourir son modèle d’objets, des fonctionnalités puissantes peuvent rester accessibles indirectement.
+Comprendre l’introspection Python et les limites d’une isolation fondée sur le masquage de quelques fonctions. Le parcours du modèle d’objets donne encore accès à des fonctionnalités puissantes.
 
 ## 1. Identifier l’environnement restreint
 
@@ -30,7 +30,7 @@ Résultat rapporté :
 2
 ```
 
-Des commandes habituelles et des fonctions comme `dir()` ou `help()` sont en revanche indisponibles. L’environnement n’est pas un shell Bash normal ni un interpréteur Python complet : il évalue certaines expressions dans un espace restreint.
+Le programme évalue certaines expressions Python dans un espace restreint, avec des commandes habituelles et des fonctions comme `dir()` ou `help()` rendues indisponibles.
 
 ### Limite de traçabilité
 
@@ -160,27 +160,27 @@ Le secret affiché est :
 fiumuikeil8rung8ahcuiperb
 ```
 
-Aucun fichier n’est créé ou modifié par cette méthode.
+Cette méthode laisse les fichiers de la VM inchangés.
 
-## 8. Valider le secret
+## 8. Passer à `level08`
 
 ```bash
-ssh -p 4242 level08@localhost
+su - level08
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level08`. La connexion a réussi avec le secret récupéré, également conservé dans `level07/flag`.
+Résultat attendu : `level08`. Le passage au compte suivant a réussi avec le secret récupéré, également conservé dans `level07/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
 Le jail masque certaines fonctions visibles, mais laisse accessibles `__class__`, `__mro__`, `__subclasses__` et les attributs des fonctions Python. Ces objets permettent de retrouver indirectement un module déjà chargé et d’appeler `os.system`.
 
-Cette expression n’est pas universelle : elle dépend de la version de Python, des classes chargées, des attributs autorisés et de la présence du module `os` dans `sys.modules`. La recherche par nom limite seulement la dépendance à l’ordre des sous-classes.
+Cette expression dépend de la version de Python, des classes chargées, des attributs autorisés et de la présence du module `os` dans `sys.modules`. La recherche par nom évite de dépendre de l’ordre des sous-classes.
 
 Une véritable frontière de sécurité ne doit pas reposer sur `eval()` avec une liste incomplète de noms interdits. Il faut définir des opérations autorisées et les exécuter dans une isolation réellement séparée et configurée pour résister à des entrées non fiables.
 

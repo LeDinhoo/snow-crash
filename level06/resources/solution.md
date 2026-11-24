@@ -45,7 +45,7 @@ Les observations conservées montrent que :
 - ce groupe peut modifier `/etc/raven/raven.conf` ;
 - l’exécutable `raven` appartient à `flag06` et possède le bit setuid.
 
-Le bit setuid est visible par un `s` dans les permissions du propriétaire. Lors de l’exécution, le programme peut recevoir l’UID effectif de son propriétaire, ici `flag06`. Cela ne transforme pas définitivement notre compte en `flag06` : seuls les droits effectifs du processus concerné changent.
+Le bit setuid est visible par un `s` dans les permissions du propriétaire. Lors de l’exécution, le programme reçoit l’UID effectif de son propriétaire, ici `flag06`, tandis que la session reste ouverte sous `level06`.
 
 Les permissions exactes affichées par `ls -l` doivent être conservées depuis la VM afin d’apporter la preuve de ces affirmations.
 
@@ -73,7 +73,7 @@ Une expression régulière, ou *regex*, décrit un motif à rechercher dans du t
 $line =~ /ERROR/
 ```
 
-Cette expression vérifie si `$line` contient le mot `ERROR`. Dans Raven, le contenu de `$pattern` ne vient pas directement du programme : il est lu dans le fichier de configuration modifiable par `level06`.
+Cette expression vérifie si `$line` contient le mot `ERROR`. Dans Raven, `$pattern` est lu dans le fichier de configuration modifiable par `level06`.
 
 ## 4. Comprendre l’exécution de code dans la regex
 
@@ -85,7 +85,7 @@ Perl accepte une construction spéciale dans certaines expressions régulières 
 
 Le code placé entre les accolades est exécuté pendant l’évaluation du motif. La directive `use re 'eval'` autorise ce mécanisme pour un motif construit dynamiquement.
 
-Le problème n’est donc pas la simple utilisation d’une regex. Il vient de la combinaison suivante :
+La vulnérabilité vient de la combinaison suivante :
 
 ```text
 configuration contrôlée par level06
@@ -115,9 +115,9 @@ Total lines: 0
 Skipped files: 2
 ```
 
-Si aucune ligne n’est traitée, l’expression régulière n’est jamais évaluée et le code qu’elle contient ne s’exécute pas. Modifier uniquement le motif ne suffit donc pas.
+L’exécution du motif nécessite au moins une ligne de journal traitée. La rétention initiale produit `Total lines: 0` ; elle doit donc être élargie en même temps que le motif est modifié.
 
-La valeur `9999` élargit suffisamment la période pour inclure les journaux présents sur cette VM. Ce nombre est adapté aux données du niveau ; ce n’est pas une constante particulière de Raven ou de Perl.
+La valeur `9999` élargit suffisamment la période pour inclure les journaux présents sur cette VM. Elle est choisie en fonction de l’âge des données du niveau.
 
 ## 6. Sauvegarder puis modifier la configuration
 
@@ -159,7 +159,7 @@ Le motif exécute `cat` pendant le traitement des lignes et affiche le secret :
 wizelohxamaiuiia2uinaes4a
 ```
 
-La solution rapporte que cette valeur apparaît six fois, car six lignes passent par l’évaluation du motif. Cette répétition est une conséquence du traitement ligne par ligne, pas six secrets différents.
+La solution rapporte six affichages identiques, correspondant aux six lignes évaluées par le motif.
 
 ## 8. Restaurer la configuration
 
@@ -176,19 +176,19 @@ Après confirmation, supprimer la sauvegarde :
 rm -f /tmp/raven.conf.level06.bak
 ```
 
-## 9. Valider le secret
+## 9. Passer à `level07`
 
 ```bash
-ssh -p 4242 level07@localhost
+su - level07
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level07`. La connexion a réussi avec le secret récupéré, également conservé dans `level06/flag`.
+Résultat attendu : `level07`. Le passage au compte suivant a réussi avec le secret récupéré, également conservé dans `level06/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
@@ -202,7 +202,7 @@ La rétention constitue une quatrième condition pratique : au moins une ligne d
 
 ## À expliquer à l’évaluation
 
-> J’ai découvert que Raven chargeait depuis une configuration modifiable un motif Perl dynamique. Le script active `re 'eval'`, ce qui permet à la construction `(?{ ... })` d’exécuter du code. J’ai aussi augmenté temporairement la rétention, car aucun journal n’était traité avec la valeur originale. L’exécutable setuid a ensuite lu le flag avec les droits de `flag06`. Enfin, j’ai restauré la configuration et vérifié son empreinte.
+> J’ai découvert que Raven chargeait depuis une configuration modifiable un motif Perl dynamique. Le script active `re 'eval'`, ce qui permet à la construction `(?{ ... })` d’exécuter du code. J’ai aussi augmenté temporairement la rétention, car la valeur originale excluait tous les journaux. L’exécutable setuid a ensuite lu le flag avec les droits de `flag06`. Enfin, j’ai restauré la configuration et vérifié son empreinte.
 
 ## Traçabilité et références
 

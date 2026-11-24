@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Comprendre comment un service privilégié peut exécuter des instructions contrôlées par un utilisateur moins privilégié. Le problème ne vient pas de CMake lui-même, mais de la confiance accordée à un fichier modifiable.
+Comprendre comment un service privilégié peut exécuter des instructions contrôlées par un utilisateur moins privilégié. La faille repose sur la confiance accordée à un fichier CMake modifiable.
 
 ## 1. Lire l’indice
 
@@ -16,13 +16,13 @@ Résultat :
 Every Burbclave has rules. Find the loophole.
 ```
 
-Le mot `Burbclave` fournit une piste. Pour retrouver le service sans connaître immédiatement son nom exact :
+Le mot `Burbclave` fournit une piste. La commande suivante retrouve le service correspondant :
 
 ```bash
 systemctl list-unit-files | grep -i burbclave
 ```
 
-Cette commande complète la démarche de découverte. Sa sortie originale n’a pas été conservée dans les notes actuelles.
+Cette commande complète la démarche de découverte. Sa sortie originale reste à ajouter aux notes.
 
 ## 2. Étudier le service et les permissions
 
@@ -49,7 +49,7 @@ level03
                  └─ écrit /tmp/level03_recovered
 ```
 
-`level03` ne peut pas lire directement `/home/flag03/.flag`. Le service, lui, le peut grâce à l’identité sous laquelle il fonctionne.
+Le service possède, grâce à l’identité `flag03`, le droit de lire `/home/flag03/.flag`.
 
 ## 3. Comprendre le script CMake
 
@@ -65,7 +65,7 @@ file(WRITE "/tmp/level03_recovered" "${SECRET}")
 | `file(READ ... SECRET)` | Lire `.flag` et placer son contenu dans la variable CMake `SECRET`. |
 | `file(WRITE ... "${SECRET}")` | Écrire cette variable dans un fichier que `level03` pourra consulter. |
 
-CMake sert habituellement à configurer la construction de programmes, mais son langage permet également de manipuler des fichiers. Aucune boucle, fonction personnalisée ou compilation supplémentaire n’est nécessaire ici.
+CMake sert habituellement à configurer la construction de programmes, et son langage permet également de manipuler des fichiers. Les deux instructions présentées réalisent toute l’opération.
 
 ## 4. Sauvegarder puis installer le script
 
@@ -117,7 +117,7 @@ Le contenu récupéré est :
 b209ea91ad7a5c2a0b0f4e195ca4
 ```
 
-Si le fichier n’existe pas immédiatement, cela ne prouve pas que le script est incorrect : le timer ne s’est peut-être pas encore déclenché.
+Le fichier apparaît après le déclenchement du timer. Consulter la liste des timers permet de connaître le prochain passage avant de relire la sortie.
 
 ## 6. Restaurer l’état initial
 
@@ -143,25 +143,25 @@ rm -f /tmp/level03_recovered
 
 Les notes de résolution confirment que le script et le fichier temporaire ont été supprimés de la VM après vérification.
 
-## 7. Valider le secret
+## 7. Passer à `level04`
 
 ```bash
-ssh -p 4242 level04@localhost
+su - level04
 ```
 
-Puis, une fois connecté :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level04`. La connexion a réussi avec le secret récupéré, également conservé dans `level03/flag`.
+Résultat attendu : `level04`. Le passage au compte suivant a réussi avec le secret récupéré, également conservé dans `level03/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
 Le service exécute avec les droits de `flag03` un script situé dans un emplacement modifiable par `level03`. Le contrôle du fichier d’instructions permet donc indirectement d’effectuer des opérations autorisées pour `flag03`.
 
-Exécuter nous-mêmes le script CMake ne suffirait pas : il fonctionnerait alors avec les droits de `level03` et ne pourrait toujours pas lire le flag. C’est l’identité du service qui rend la lecture possible.
+L’exécution doit être déclenchée par le service afin que les instructions CMake bénéficient des droits de `flag03`. Une exécution directe conserverait les droits de `level03`.
 
 ## À expliquer à l’évaluation
 

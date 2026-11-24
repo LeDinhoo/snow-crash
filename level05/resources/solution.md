@@ -56,7 +56,7 @@ level05 modifie metaverse.wasm
 | Wasmtime | Environnement capable d’exécuter un module WebAssembly avec WASI. |
 | `wat2wasm` | Outil qui convertit un fichier WAT en module WASM. |
 
-WebAssembly ne dispose pas automatiquement d’un accès illimité au système. L’environnement d’exécution choisit les répertoires et les fonctions accessibles au module. Dans ce niveau, la configuration rapportée préouvre `/`, ce qui rend le fichier du flag accessible au service.
+L’environnement d’exécution définit les répertoires et les fonctions système accessibles au module WebAssembly. Dans ce niveau, la configuration rapportée préouvre `/`, ce qui rend le fichier du flag accessible au service.
 
 ## 4. Résumer l’algorithme
 
@@ -124,7 +124,7 @@ Les chemins ne commencent pas par `/` parce qu’ils sont résolus relativement 
 | `84` | Descripteur du fichier de destination. |
 | `128` | Début du tampon qui reçoit le flag. |
 
-Ces adresses ont été choisies pour éviter que les zones se chevauchent. Elles ne sont pas imposées par WASI et ne constituent pas des valeurs secrètes.
+L’auteur du module a choisi ces adresses pour organiser la mémoire sans chevauchement entre les zones.
 
 ## 7. Ouvrir le fichier source
 
@@ -255,25 +255,25 @@ rm -f /opt/snowcrash/level05/x
 
 Si `x` existait avant le test, il faut le restaurer plutôt que le supprimer.
 
-## 12. Valider le secret
+## 12. Passer à `level06`
 
 ```bash
-ssh -p 4242 level06@localhost
+su - level06
 ```
 
-Puis vérifier l’identité obtenue :
+Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level06`. La connexion a réussi avec la valeur récupérée, également conservée dans `level05/flag`.
+Résultat attendu : `level06`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level05/flag`.
 
 ## Pourquoi cette méthode fonctionne
 
 Le timer lance avec les droits de `flag05` un module WASM modifiable par `level05`. Le service lui accorde en plus un accès WASI à la racine. Le payload peut donc demander au runtime d’ouvrir le flag, de le lire en mémoire et de l’écrire dans un fichier accessible.
 
-La faille n’est pas une propriété générale de WebAssembly : elle vient de la combinaison d’un module non fiable, d’une identité privilégiée et de ressources WASI trop largement exposées.
+La faille résulte de la combinaison d’un module modifiable, d’une identité privilégiée et de ressources WASI trop largement exposées.
 
 ## Limites du payload
 
@@ -282,7 +282,7 @@ La faille n’est pas une propriété générale de WebAssembly : elle vient de 
 - Le descripteur `3` suppose l’ordre de préouverture observé dans cette configuration WASI.
 - Les chemins et les longueurs sont codés en dur.
 
-Ce module est donc volontairement minimal et adapté au puzzle, pas à un usage robuste. Son fonctionnement et la connexion à `level06` sont rapportés comme confirmés sur la VM, mais les sorties originales de compilation et d’exécution n’ont pas été conservées dans le dépôt.
+Ce module volontairement minimal est adapté au puzzle. Son fonctionnement et le passage à `level06` sont rapportés comme confirmés sur la VM ; le dépôt conserve le résultat, tandis que les sorties originales de compilation et d’exécution restent à ajouter.
 
 ## À expliquer à l’évaluation
 
