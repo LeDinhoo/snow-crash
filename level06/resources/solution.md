@@ -119,16 +119,9 @@ L’exécution du motif nécessite au moins une ligne de journal traitée. La r�
 
 La valeur `9999` élargit suffisamment la période pour inclure les journaux présents sur cette VM. Elle est choisie en fonction de l’âge des données du niveau.
 
-## 6. Sauvegarder puis modifier la configuration
+## 6. Modifier la configuration
 
-Sauvegarder d’abord le fichier original et son empreinte :
-
-```bash
-cp /etc/raven/raven.conf /tmp/raven.conf.level06.bak
-sha256sum /tmp/raven.conf.level06.bak
-```
-
-Installer ensuite la configuration de test :
+Installer la configuration de test :
 
 ```bash
 cat > /etc/raven/raven.conf <<'EOF'
@@ -161,22 +154,7 @@ wizelohxamaiuiia2uinaes4a
 
 La solution rapporte six affichages identiques, correspondant aux six lignes évaluées par le motif.
 
-## 8. Restaurer la configuration
-
-Restaurer le contenu original et vérifier que les empreintes sont identiques :
-
-```bash
-cat /tmp/raven.conf.level06.bak > /etc/raven/raven.conf
-sha256sum /etc/raven/raven.conf /tmp/raven.conf.level06.bak
-```
-
-Après confirmation, supprimer la sauvegarde :
-
-```bash
-rm -f /tmp/raven.conf.level06.bak
-```
-
-## 9. Passer à `level07`
+## 8. Passer à `level07`
 
 ```bash
 su - level07
@@ -202,10 +180,10 @@ La rétention constitue une quatrième condition pratique : au moins une ligne d
 
 ## À expliquer à l’évaluation
 
-> J’ai découvert que Raven chargeait depuis une configuration modifiable un motif Perl dynamique. Le script active `re 'eval'`, ce qui permet à la construction `(?{ ... })` d’exécuter du code. J’ai aussi augmenté temporairement la rétention, car la valeur originale excluait tous les journaux. L’exécutable setuid a ensuite lu le flag avec les droits de `flag06`. Enfin, j’ai restauré la configuration et vérifié son empreinte.
+> J’ai découvert que Raven chargeait depuis une configuration modifiable un motif Perl dynamique. Le script active `re 'eval'`, ce qui permet à la construction `(?{ ... })` d’exécuter du code. J’ai aussi augmenté la rétention, car la valeur originale excluait tous les journaux. L’exécutable setuid a ensuite lu le flag avec les droits de `flag06`.
 
 ## Traçabilité et références
 
-Conserver les sorties de `id`, `ls -l`, l’extrait utile de `raven.pl`, la sortie avant et après modification de la rétention, les empreintes de restauration et le résultat de `id -un`.
+Conserver les sorties de `id`, `ls -l`, l’extrait utile de `raven.pl`, la sortie avant et après modification de la rétention et le résultat de `id -un`.
 
 Les mécanismes techniques sont décrits dans la documentation officielle : [Perl `perlre`](https://perldoc.perl.org/perlre), [Perl `re`](https://perldoc.perl.org/re) et [`execve(2)`](https://man7.org/linux/man-pages/man2/execve.2.html).

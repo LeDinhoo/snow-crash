@@ -200,13 +200,13 @@ Cette séquence copie à l’adresse `68` le nombre d’octets réellement lus, 
 
 ## 10. Compiler et installer le payload
 
-Depuis le terminal hôte, à la racine du dépôt, copier le WAT vers la VM :
+Dans la session existante sous `level05`, créer `/tmp/payload.wat` et y coller le contenu exact de [payload.wat](payload.wat) :
 
 ```bash
-scp -P 4242 level05/resources/payload.wat level05@localhost:/tmp/payload.wat
+vi /tmp/payload.wat
 ```
 
-Dans la VM, vérifier d’abord l’état du fichier de sortie, puis le créer et préparer le module :
+Vérifier ensuite l’état du fichier de sortie, puis le créer et préparer le module :
 
 ```bash
 ls -l /opt/snowcrash/level05/x
@@ -215,13 +215,11 @@ chmod 666 /opt/snowcrash/level05/x
 wat2wasm /tmp/payload.wat -o /tmp/payload.wasm
 ```
 
-Le mode `666` autorise ici la lecture et l’écriture pour tous les utilisateurs afin que `level05` et le service puissent utiliser le même fichier. Cette permission volontairement large sert uniquement au test pédagogique et ne doit pas être conservée.
+Le mode `666` autorise ici la lecture et l’écriture pour tous les utilisateurs afin que `level05` et le service puissent utiliser le même fichier.
 
-Sauvegarder le module original et son empreinte, puis remplacer son contenu :
+Remplacer le contenu du module par le payload compilé :
 
 ```bash
-cp /opt/snowcrash/level05/metaverse.wasm /tmp/metaverse.bak
-sha256sum /tmp/metaverse.bak
 cat /tmp/payload.wasm > /opt/snowcrash/level05/metaverse.wasm
 ```
 
@@ -237,25 +235,7 @@ Le secret récupéré est :
 viuaaale9huek52boumoomioc
 ```
 
-## 11. Restaurer l’état initial
-
-Restaurer le module original et vérifier les empreintes avant de supprimer la sauvegarde :
-
-```bash
-cat /tmp/metaverse.bak > /opt/snowcrash/level05/metaverse.wasm
-sha256sum /tmp/metaverse.bak /opt/snowcrash/level05/metaverse.wasm
-```
-
-Les notes confirment que les deux empreintes étaient identiques après restauration. Les fichiers créés pour le test peuvent alors être retirés :
-
-```bash
-rm -f /tmp/metaverse.bak /tmp/payload.wat /tmp/payload.wasm
-rm -f /opt/snowcrash/level05/x
-```
-
-Si `x` existait avant le test, il faut le restaurer plutôt que le supprimer.
-
-## 12. Passer à `level06`
+## 11. Passer à `level06`
 
 ```bash
 su - level06
@@ -286,8 +266,8 @@ Ce module volontairement minimal est adapté au puzzle. Son fonctionnement et le
 
 ## À expliquer à l’évaluation
 
-> Le service exécute sous `flag05` un module WASM modifiable par `level05` et lui préouvre la racine via WASI. Mon module ouvre le flag, le lit dans un tampon, ouvre un fichier de sortie puis y écrit exactement le nombre d’octets lus. Après récupération du secret, j’ai restauré le module original et vérifié son empreinte.
+> Le service exécute sous `flag05` un module WASM modifiable par `level05` et lui préouvre la racine via WASI. Mon module ouvre le flag, le lit dans un tampon, ouvre un fichier de sortie puis y écrit exactement le nombre d’octets lus.
 
 ## Traçabilité à conserver
 
-Conserver la sortie de `systemctl cat`, les permissions de `metaverse.wasm`, la configuration des répertoires WASI préouverts, la sortie de `wat2wasm`, les passages du timer, les empreintes avant et après restauration, ainsi que le résultat de `id -un` après validation.
+Conserver la sortie de `systemctl cat`, les permissions de `metaverse.wasm`, la configuration des répertoires WASI préouverts, la sortie de `wat2wasm`, les passages du timer et le résultat de `id -un` après validation.

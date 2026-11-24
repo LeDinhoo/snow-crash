@@ -200,13 +200,13 @@ Le bloc `with socket.socket(...) as sock` garantit la fermeture du socket à la 
 
 ## 8. Exécuter le client
 
-Depuis un terminal hôte, copier le client sur la VM pendant que la session initiale reste ouverte :
+Dans la session existante sous `level08`, créer le client et y coller le contenu exact de [client.py](client.py) :
 
 ```bash
-scp -P 4242 level08/resources/client.py level08@localhost:/tmp/blacksun_client.py
+vi /tmp/blacksun_client.py
 ```
 
-Revenir dans la session existante, sous `level08`, puis lancer :
+Lancer ensuite le client :
 
 ```bash
 python3 /tmp/blacksun_client.py
@@ -218,12 +218,6 @@ Résultat rapporté :
 HELLO OK
 ACCESS GRANTED
 FLAG=s5cAhoAfNT9GrgqykhZavyBg9
-```
-
-Supprimer ensuite le fichier temporaire :
-
-```bash
-rm -f /tmp/blacksun_client.py
 ```
 
 ## 9. Passer à `level09`
