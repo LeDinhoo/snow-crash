@@ -16,25 +16,19 @@ Résultat :
 Every Burbclave has rules. Find the loophole.
 ```
 
-Le README donne le mot-clé `Burbclave`, mais le nom exact du service reste à identifier. La commande suivante recherche ce mot parmi les fichiers d’unités connus de systemd :
+Le README donne le mot-clé `Burbclave`. On l’utilise d’abord pour explorer les noms de fichiers et de répertoires de la VM :
 
 ```bash
-systemctl list-unit-files | grep -i burbclave
+find / -iname '*burbclave*' 2>/dev/null
 ```
 
 | Élément | Rôle |
 | --- | --- |
-| `systemctl list-unit-files` | Lister les unités installées, y compris les services qui ne sont pas actuellement démarrés. |
-| `|` | Transmettre cette liste à la commande suivante. |
-| `grep -i burbclave` | Conserver les lignes contenant `burbclave`, sans tenir compte des majuscules et minuscules. |
+| `find /` | Parcourir le système de fichiers depuis sa racine. |
+| `-iname '*burbclave*'` | Ne retenir que les chemins dont le nom contient `burbclave`, sans tenir compte de la casse. |
+| `2>/dev/null` | Masquer les erreurs d’accès. |
 
-Résultat attendu :
-
-```text
-burbclave.service
-```
-
-Cette première commande répond uniquement à une question : **quel est le nom du service lié à Burbclave ?** La réponse est `burbclave.service`. Il faut maintenant examiner ce service.
+Parmi les résultats se trouve le fichier d’unité `/etc/systemd/system/burbclave.service`. Son nom donne le service à examiner. La configuration systemd permettra ensuite de savoir ce qu’il exécute.
 
 ## 2. Comprendre le point faible
 

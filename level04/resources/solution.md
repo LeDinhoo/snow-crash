@@ -16,15 +16,27 @@ Résultat :
 In the beginning was the Word.
 ```
 
-L’indice ne donne ni un programme ni un chemin. Il renvoie à Babel, dont le nom est associé aux langues et aux mots. `babel` devient donc un mot-clé à rechercher dans les services de la VM.
+L’indice ne donne ni un programme ni un chemin exploitable. On commence donc par chercher les chemins qui portent le nom du niveau actuel.
 
 ## 2. Trouver le service
+
+```bash
+find / -iname '*level04*' 2>/dev/null
+```
+
+Parmi les chemins trouvés figure `/opt/snowcrash/level04`. Examiner son contenu révèle le script `babel.sh` :
+
+```bash
+ls -la /opt/snowcrash/level04
+```
+
+Le nom du script donne le mot-clé `babel`, utilisé pour retrouver le service correspondant :
 
 ```bash
 systemctl list-unit-files --all | grep -i babel
 ```
 
-Cette recherche fait apparaître `babel.service`. Elle donne le nom exact du service à examiner ; elle ne dit pas encore ce qu’il exécute.
+Le résultat est `babel.service`. Le nom du service est maintenant connu, mais pas encore son comportement.
 
 ## 3. Lire ce que le service exécute
 
@@ -197,4 +209,4 @@ Les niveaux 03 et 04 exploitent la même erreur de confiance : un service privil
 
 ## Traçabilité à conserver
 
-Conserver les sorties de la recherche `systemctl list-unit-files`, de `systemctl cat`, de `cat babel.sh`, de `id`, de `ls -l`, de `tail` et de `id -un`.
+Conserver les sorties de `find`, de `ls -la`, de `systemctl list-unit-files`, de `systemctl cat`, de `cat babel.sh`, de `id`, de `ls -l`, de `tail` et de `id -un`.

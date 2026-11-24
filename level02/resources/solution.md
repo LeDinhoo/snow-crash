@@ -16,25 +16,19 @@ Résultat :
 A Kourier never loses a package. Even after delivery.
 ```
 
-L’indice suggère qu’une information reste présente après avoir été utilisée ou « livrée ». On peut donc rechercher un fichier oublié appartenant au compte cible.
+L’indice donne surtout un mot-clé : `Kourier`. Plutôt que de supposer où se trouve le fichier, on recherche les chemins dont le nom contient ce mot.
 
-## 2. Rechercher les fichiers de `flag02`
+## 2. Rechercher les chemins liés à l’indice
 
 ```bash
-find / -path /proc -prune -o -type f -user flag02 -print 2>/dev/null
+find / -iname '*kourier*' 2>/dev/null
 ```
 
 | Élément | Rôle |
 | --- | --- |
 | `find /` | Parcourir le système de fichiers depuis sa racine. |
-| `-path /proc -prune` | Ne pas descendre dans `/proc`. |
-| `-o` | Évaluer l’expression située à droite pour les autres chemins. |
-| `-type f` | Ne retenir que les fichiers ordinaires. |
-| `-user flag02` | Ne retenir que les fichiers appartenant à `flag02`. |
-| `-print` | Afficher les chemins correspondants. |
+| `-iname '*kourier*'` | Ne retenir que les chemins dont le nom contient `kourier`, sans tenir compte de la casse. |
 | `2>/dev/null` | Masquer les erreurs d’accès. |
-
-`/proc` est un système de fichiers virtuel qui expose notamment des informations sur les processus. L’exclure évite des résultats instables et des erreurs inutiles pendant cette recherche.
 
 Le résultat intéressant est :
 
