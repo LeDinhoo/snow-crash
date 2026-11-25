@@ -1,5 +1,7 @@
 # Level09 — Trouver un token dans un binaire
 
+**Point de départ :** une session sur la VM Snow Crash sous `level09`. Le flag de ce niveau sert de mot de passe au compte `level10`.
+
 ## Objectif
 
 Comprendre qu’un binaire peut contenir des chaînes de caractères lisibles, puis distinguer une simple chaîne intéressante d’un token réellement accepté par le programme.
@@ -10,7 +12,7 @@ Comprendre qu’un binaire peut contenir des chaînes de caractères lisibles, p
 cat README
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 Da5id saw something he shouldn't have.
@@ -25,7 +27,7 @@ id
 find /opt/snowcrash/level09 -maxdepth 3 -ls
 ```
 
-Le fichier intéressant est :
+Chemin à rechercher :
 
 ```text
 /opt/snowcrash/level09/da5id
@@ -38,7 +40,7 @@ file /opt/snowcrash/level09/da5id
 ls -l /opt/snowcrash/level09/da5id
 ```
 
-Les observations conservées montrent que :
+Vérifier les conditions suivantes :
 
 - `da5id` est un exécutable ;
 - il appartient à `flag09` ;
@@ -55,13 +57,13 @@ strings /opt/snowcrash/level09/da5id
 
 `strings` parcourt un fichier et affiche les séquences d’octets qui ressemblent à du texte imprimable. Cette commande est plus adaptée que `cat` à l’examen rapide d’un binaire, car elle écarte la majorité des octets non textuels.
 
-La chaîne intéressante rapportée est :
+Chaîne à rechercher dans la sortie :
 
 ```text
 Iheartpwnage
 ```
 
-Une chaîne présente dans un programme peut être un message, un chemin, une donnée de test ou un secret. `Iheartpwnage` devient donc une candidate à tester avec le programme.
+La présence de la chaîne ne suffit pas à prouver qu’il s’agit du token : il faut tester son acceptation.
 
 ## 4. Tester le token
 
@@ -71,18 +73,30 @@ Passer la chaîne trouvée comme argument du programme :
 /opt/snowcrash/level09/da5id Iheartpwnage
 ```
 
-Résultat rapporté :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 TOKEN ACCEPTED.
 ```
 
-Le programme affiche ensuite le flag :
+Flag de référence à comparer à la sortie du programme :
 
 ```text
 s19q3m3u4toaequegh8ahpicel
 ```
 
-`Iheartpwnage` contient 12 caractères. Les messages `checking byte 0...` à `checking byte 11...` indiquent que le programme contrôle chacun de ces caractères avant d’accepter le token.
+`Iheartpwnage` contient 12 caractères. Les messages `checking byte 0...` à `checking byte 11...` restent à confirmer dans la sortie complète avant de conclure sur la vérification de chaque caractère.
 
-Le message `TOKEN ACCEPTED.` confirme que la chaîne constitue l’entrée attendue.
+Si ce message est effectivement affiché, le programme accepte la chaîne comme token.
+
+## Passer au niveau suivant
+
+Après avoir confirmé le flag sur la VM, essayer `su - level10` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level10`. Cette connexion reste à valider.
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Confirmer l’indice, le chemin, le type du binaire et ses permissions.
+- [ ] Relever la sortie de `strings` et les messages complets lors du test du token.
+- [ ] Comparer le flag affiché à la valeur de référence et confirmer le passage à `level10`.

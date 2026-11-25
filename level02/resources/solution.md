@@ -1,5 +1,7 @@
 # Level02 — Lire un fichier temporaire mal protégé
 
+**Point de départ :** une session sur la VM Snow Crash sous `level02`. Le flag de ce niveau sert de mot de passe au compte `level03`.
+
 ## Objectif
 
 Comprendre les conséquences d’une mauvaise gestion des permissions. La confidentialité d’un fichier temporaire dépend de son emplacement, de ses droits et de sa suppression après usage.
@@ -10,13 +12,13 @@ Comprendre les conséquences d’une mauvaise gestion des permissions. La confid
 cat README
 ```
 
-Résultat :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 A Kourier never loses a package. Even after delivery.
 ```
 
-L’indice donne surtout un mot-clé : `Kourier`. Plutôt que de supposer où se trouve le fichier, on recherche les chemins dont le nom contient ce mot.
+Rechercher les chemins contenant `Kourier`, le mot-clé de l’indice.
 
 ## 2. Rechercher les chemins liés à l’indice
 
@@ -30,7 +32,7 @@ find / -iname '*kourier*' 2>/dev/null
 | `-iname '*kourier*'` | Ne retenir que les chemins dont le nom contient `kourier`, sans tenir compte de la casse. |
 | `2>/dev/null` | Masquer les erreurs d’accès. |
 
-Le résultat intéressant est :
+Chemin à rechercher :
 
 ```text
 /tmp/kourier_delivery.tmp
@@ -48,7 +50,7 @@ file /tmp/kourier_delivery.tmp
 - `ls -l` affiche notamment le propriétaire et les droits d’accès ;
 - `file` détermine le type de contenu sans se fier uniquement à l’extension.
 
-Les observations conservées indiquent que le fichier appartient à `flag02`, contient du texte et accorde le droit de lecture aux autres utilisateurs. `level02` est donc autorisé par le système à le lire.
+Vérifier que le fichier appartient à `flag02`, contient du texte et accorde le droit de lecture aux autres utilisateurs. Si ces droits sont confirmés, `level02` peut le lire.
 
 ## 4. Lire le contenu
 
@@ -56,17 +58,15 @@ Les observations conservées indiquent que le fichier appartient à `flag02`, co
 cat /tmp/kourier_delivery.tmp
 ```
 
-Le fichier révèle le secret :
+Flag de référence à comparer au contenu du fichier :
 
 ```text
 qi0mauch9ahksha8b6dfe3p0kq
 ```
 
-Le droit de lecture accordé à `level02` permet d’afficher directement le contenu avec `cat`.
-
 ## 5. Passer à `level03`
 
-Dans la session existante, changer d’utilisateur avec la valeur récupérée :
+Depuis `level02`, changer d’utilisateur avec la valeur récupérée :
 
 ```bash
 su - level03
@@ -83,3 +83,11 @@ Résultat attendu :
 ```text
 level03
 ```
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Confirmer l’indice et le chemin du fichier temporaire.
+- [ ] Relever le propriétaire, le type de fichier et ses droits de lecture.
+- [ ] Vérifier la lecture effective et la connexion à `level03`.

