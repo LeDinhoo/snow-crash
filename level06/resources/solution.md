@@ -2,7 +2,9 @@
 
 ## Objectif
 
-Comprendre comment une configuration censée contenir des données peut devenir du code exécutable. L’exploitation nécessite ici la combinaison d’une configuration modifiable, d’une expression régulière Perl autorisant du code et d’un exécutable disposant des droits de `flag06`.
+Nous sommes connectés en tant que `level06`. Notre objectif est de récupérer le secret situé dans `/home/flag06/.flag`, afin de passer au niveau suivant. Nous ne pouvons pas le lire directement : il faut trouver un programme qui peut le lire pour nous.
+
+Dans ce niveau, nous allons découvrir qu’un fichier de configuration (un fichier de réglages) peut contenir du code exécuté par un programme ayant plus de droits que nous.
 
 ## 1. Trouver le programme
 
@@ -16,7 +18,7 @@ Résultat :
 Nothing passes through the Raven unread.
 ```
 
-Le mot `Raven` fournit la piste. Rechercher les fichiers correspondants dans le dossier du niveau :
+Le mot `Raven` fournit la piste : il semble désigner un programme à examiner. Nous ne connaissons pas encore la faille. Rechercher les fichiers correspondants dans le dossier du niveau :
 
 ```bash
 find /opt/snowcrash/level06 -maxdepth 3 -ls
@@ -29,7 +31,7 @@ Deux fichiers intéressants apparaissent :
 /opt/snowcrash/level06/raven.pl
 ```
 
-Le premier est l’exécutable à lancer. Le second est un script Perl lisible qui permet d’étudier le traitement réalisé.
+Le premier est l’exécutable à lancer. Le second est un script Perl lisible qui permet d’étudier le traitement réalisé. Perl est un langage de programmation, comme Python ou C. Raven analyse des logs, c’est-à-dire des fichiers qui enregistrent les événements de la machine.
 
 ## 2. Examiner les permissions
 
@@ -39,6 +41,8 @@ ls -l /etc/raven/raven.conf
 ls -l /opt/snowcrash/level06/raven
 ```
 
+`id` permet de connaître notre utilisateur et ses groupes. `ls -l` permet de voir les propriétaires et les permissions des fichiers. Nous cherchons à savoir si nous pouvons modifier les réglages de Raven et avec quels droits Raven s’exécute.
+
 Les observations conservées montrent que :
 
 - `level06` appartient au groupe `raven` ;
@@ -46,6 +50,10 @@ Les observations conservées montrent que :
 - l’exécutable `raven` appartient à `flag06` et possède le bit setuid.
 
 Le bit setuid est visible par un `s` dans les permissions du propriétaire. Lors de l’exécution, le programme reçoit l’UID effectif de son propriétaire, ici `flag06`, tandis que la session reste ouverte sous `level06`.
+
+Autrement dit, même si nous restons connectés en tant que `level06`, Raven dispose des droits effectifs de `flag06`. Nous pouvons modifier ses réglages : reste à savoir si ces réglages permettent de lui faire réaliser une opération imprévue.
+
+Pour comprendre le setuid, rechercher `Linux setuid permissions` ou consulter [execve(2)](https://man7.org/linux/man-pages/man2/execve.2.html).
 
 Les permissions exactes affichées par `ls -l` doivent être conservées depuis la VM afin d’apporter la preuve de ces affirmations.
 
@@ -67,23 +75,38 @@ et l’évaluation d’un motif provenant de la configuration :
 $line =~ /$pattern/
 ```
 
-Une expression régulière, ou *regex*, décrit un motif à rechercher dans du texte. Par exemple :
+Une expression régulière, ou *regex*, décrit un motif à rechercher dans du texte. Par exemple, si un journal contient `INFO: démarrage` et `ERROR: connexion impossible`, nous pouvons rechercher le mot `ERROR` pour identifier les erreurs. En Perl :
 
 ```perl
 $line =~ /ERROR/
 ```
 
-Cette expression vérifie si `$line` contient le mot `ERROR`. Dans Raven, `$pattern` est lu dans le fichier de configuration modifiable par `level06`.
+Cette expression vérifie si `$line` (la ligne du journal) contient le mot `ERROR`. L’opérateur `=~` applique l’expression régulière à cette ligne. Dans Raven, `$pattern` est lu dans le fichier de configuration modifiable par `level06`. Le réglage `loglevel_pattern` nous permet donc de choisir le motif recherché.
+
+Pour comprendre cette syntaxe si l’on ne connaît pas Perl, rechercher `Perl regex =~ operator` et consulter le [tutoriel officiel des expressions régulières](https://perldoc.perl.org/perlretut).
 
 ## 4. Comprendre l’exécution de code dans la regex
 
-Perl accepte une construction spéciale dans certaines expressions régulières :
+La ligne `use re 'eval';` est notre indice principal. Si nous ne savons pas ce qu’elle signifie, nous pouvons rechercher exactement `Perl use re eval` sur Internet.
+
+La [documentation officielle de re](https://perldoc.perl.org/re) explique que cette option autorise notamment du code dans un motif fourni par une variable. La [documentation perlre](https://perldoc.perl.org/perlre) décrit la syntaxe suivante :
 
 ```perl
 (?{ code Perl })
 ```
 
 Le code placé entre les accolades est exécuté pendant l’évaluation du motif. La directive `use re 'eval'` autorise ce mécanisme pour un motif construit dynamiquement.
+
+Pour comprendre ce mécanisme, on peut faire un petit test indépendant de Raven :
+
+```perl
+use re 'eval';
+my $pattern = q{(?{ print "Test OK\n" })};
+my $line = "INFO: service started";
+$line =~ /$pattern/;
+```
+
+`my` déclare une variable, `q{...}` conserve le texte du motif, et la dernière ligne applique ce motif. Le résultat est `Test OK` : le texte fourni comme motif a donc déclenché une instruction. Ce test ne lit aucun fichier secret.
 
 La vulnérabilité vient de la combinaison suivante :
 
@@ -108,18 +131,24 @@ La configuration originale contient :
 retention_days = 7
 ```
 
-Raven ignore les journaux trop anciens. Avec la configuration d’origine, les résultats rapportés sont :
+La rétention est la durée pendant laquelle les journaux sont pris en compte, exprimée ici en jours. Raven ignore les journaux trop anciens. Avec la configuration d’origine, les résultats rapportés sont :
 
 ```text
 Total lines: 0
 Skipped files: 2
 ```
 
+Pourquoi est-ce important ? Même si notre motif contient du code, il ne sera pas évalué si Raven ne traite aucune ligne. C’est comme demander à quelqu’un de vérifier toutes les pages d’un livre alors qu’on ne lui donne aucune page.
+
 L’exécution du motif nécessite au moins une ligne de journal traitée. La rétention initiale produit `Total lines: 0` ; elle doit donc être élargie en même temps que le motif est modifié.
 
 La valeur `9999` élargit suffisamment la période pour inclure les journaux présents sur cette VM. Elle est choisie en fonction de l’âge des données du niveau.
 
 ## 6. Modifier la configuration
+
+Nous savons maintenant que Perl peut exécuter du code dans le motif. Notre objectif est de lire un fichier. Pour savoir comment lancer une commande Linux depuis Perl, rechercher `Perl execute shell command`. La [documentation de system](https://perldoc.perl.org/functions/system) présente la fonction utilisée dans la solution.
+
+Le réglage du motif contient donc une instruction Perl, qui demande à son tour de lancer `cat`. Nous conservons le dossier des journaux et augmentons la rétention pour que le motif soit effectivement utilisé.
 
 Installer la configuration de test :
 
@@ -146,7 +175,7 @@ Les apostrophes autour de `EOF` empêchent le shell de transformer le contenu av
 /opt/snowcrash/level06/raven
 ```
 
-Le motif exécute `cat` pendant le traitement des lignes et affiche le secret :
+Nous lançons simplement Raven : c’est le programme qui lit la configuration et applique le motif aux lignes du journal. Selon le résultat rapporté dans les notes originales, le motif exécute `cat` avec les droits nécessaires pendant ce traitement et affiche le secret :
 
 ```text
 wizelohxamaiuiia2uinaes4a
@@ -178,12 +207,16 @@ Trois conditions sont nécessaires :
 
 La rétention constitue une quatrième condition pratique : au moins une ligne doit atteindre la regex pour déclencher le code.
 
+La faille n’est pas le langage Perl ni le setuid pris séparément. C’est le fait de laisser un utilisateur contrôler des données interprétées comme du code par un programme disposant de droits supplémentaires. Pour corriger cela, il faudrait notamment ne pas autoriser l’évaluation de code dans les motifs provenant de cette configuration et revoir ses permissions.
+
 ## À expliquer à l’évaluation
 
-> J’ai découvert que Raven chargeait depuis une configuration modifiable un motif Perl dynamique. Le script active `re 'eval'`, ce qui permet à la construction `(?{ ... })` d’exécuter du code. J’ai aussi augmenté la rétention, car la valeur originale excluait tous les journaux. L’exécutable setuid a ensuite lu le flag avec les droits de `flag06`.
+> J’ai trouvé un programme qui analyse des journaux et dont je peux modifier les réglages. Il possède les droits effectifs de `flag06`. En lisant son code, j’ai remarqué `use re 'eval'`. La documentation Perl m’a appris que cette instruction permet d’exécuter du code dans un motif de recherche. J’ai donc utilisé ce principe pour demander au programme de lire le secret. J’ai également augmenté la rétention, car sans journal à analyser, le motif ne s’exécutait pas.
 
 ## Traçabilité et références
 
 Conserver les sorties de `id`, `ls -l`, l’extrait utile de `raven.pl`, la sortie avant et après modification de la rétention et le résultat de `id -un`.
 
 Les mécanismes techniques sont décrits dans la documentation officielle : [Perl `perlre`](https://perldoc.perl.org/perlre), [Perl `re`](https://perldoc.perl.org/re) et [`execve(2)`](https://man7.org/linux/man-pages/man2/execve.2.html).
+
+**Note de vérification :** le petit exemple `Test OK` a été testé séparément avec Perl 5.40.1. Les sorties du niveau et les permissions restent celles rapportées par la solution originale ; elles doivent être vérifiées sur la VM Snow Crash. Les recherches proposées permettent de retrouver les mécanismes documentés, sans prétendre retracer les recherches réellement effectuées lors de la résolution initiale.

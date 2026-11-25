@@ -2,7 +2,11 @@
 
 ## Objectif
 
-Comprendre qu’un module WebAssembly modifiable devient dangereux lorsqu’un service le lance avec une identité plus privilégiée et lui donne accès au système de fichiers.
+Nous sommes connectés à la machine Linux avec l’utilisateur `level05`. Notre objectif est de récupérer le flag (le mot de passe permettant de passer au niveau suivant), situé dans `/home/flag05/.flag`.
+
+Le problème est que `level05` n’a pas le droit de lire ce fichier, contrairement à `flag05`. Nous devons donc trouver un moyen de faire lire le fichier par un programme qui possède les droits nécessaires.
+
+Dans ce niveau, la faille vient d’un module WebAssembly que nous pouvons modifier, mais qui est exécuté par un autre utilisateur.
 
 Le niveau peut se résumer ainsi :
 
@@ -27,15 +31,23 @@ id
 ls -la
 ```
 
-`whoami` indique le compte utilisé, `id` affiche ses groupes et `ls -la` montre le contenu du dossier courant. La lecture du README n’étant pas possible ici, on part du nom du compte `level05` pour poursuivre la recherche.
+Ces commandes permettent de savoir avec quel utilisateur nous sommes connectés et quels fichiers nous avons à notre disposition.
+
+- `whoami` affiche le nom de l’utilisateur connecté.
+- `id` affiche son identité et les groupes auxquels il appartient. Sous Linux, un groupe permet de partager des droits entre plusieurs utilisateurs.
+- `ls -la` affiche les fichiers du dossier courant, y compris les fichiers cachés, ainsi que leurs permissions.
+
+La lecture du README n’étant pas possible ici, on part du nom du compte `level05` pour poursuivre la recherche.
 
 ## 2. Trouver les fichiers du niveau
 
-Commencer par chercher le nom du niveau actuel :
+Nous cherchons maintenant des fichiers en rapport avec notre niveau. Ils peuvent nous donner un indice sur la méthode à utiliser :
 
 ```bash
 find / -iname '*level05*' 2>/dev/null
 ```
+
+`find /` recherche à partir de la racine du système, `-iname '*level05*'` recherche les noms contenant `level05` et `2>/dev/null` masque les messages d’erreur, notamment ceux liés aux permissions.
 
 Une piste à vérifier parmi les résultats est le dossier `/opt/snowcrash/level05`. Examiner son contenu :
 
@@ -49,7 +61,9 @@ Si la liste contient `metaverse.wasm`, identifier sa nature :
 file /opt/snowcrash/level05/metaverse.wasm
 ```
 
-Les notes de résolution présentent ce fichier comme un module WebAssembly. La sortie exacte de `find`, de `ls` et de `file` reste à confirmer sur la VM.
+La commande `file` permet de connaître le type d’un fichier, indépendamment de son nom.
+
+Les notes de résolution présentent ce fichier comme un module WebAssembly. Pour faire simple, un fichier `.wasm` contient un programme qu’un logiciel compatible peut exécuter. Comme un programme Python peut être exécuté par Python, un module WebAssembly peut être exécuté par Wasmtime. La sortie exacte de `find`, de `ls` et de `file` reste à confirmer sur la VM.
 
 ## 3. Vérifier que le module est modifiable
 
@@ -63,17 +77,25 @@ Ces deux commandes doivent être lues ensemble :
 - `id` liste les groupes de `level05` ;
 - `ls -l` donne le propriétaire, le groupe et les droits du module.
 
+Les permissions Linux indiquent qui peut lire (`r`), modifier (`w`) ou exécuter (`x`) un fichier. Ici, c’est surtout le droit `w` qui nous intéresse : il permet de modifier le contenu du module.
+
 Les notes de résolution indiquent que `level05` appartient au groupe `metaverse` et que ce groupe peut modifier `metaverse.wasm`. Les sorties exactes de `id` et de `ls -l` restent à relever sur la VM pour vérifier ces droits.
 
 À ce stade, nous savons seulement que `level05` contrôle le code du module. Cela ne suffit pas encore à lire `/home/flag05/.flag` : il faut savoir **qui exécute ce module** et **quels fichiers il peut atteindre**.
 
 ## 4. Trouver le service qui exécute le module
 
+Nous savons que le module est modifiable. Il faut maintenant comprendre comment il est utilisé.
+
+Un service est un programme, ou une tâche, géré par le système. Il peut être lancé automatiquement, sans que nous ayons à le démarrer nous-mêmes.
+
 Le nom `metaverse.wasm` donne le mot-clé de recherche du service :
 
 ```bash
 systemctl list-unit-files --all | grep -i metaverse
 ```
+
+`systemctl list-unit-files --all` liste les fichiers de configuration des unités systemd ; `grep -i metaverse` ne conserve que les lignes contenant `metaverse`, sans distinguer les majuscules et les minuscules.
 
 Le service identifié est `metaverse.service`. Lire sa définition :
 
@@ -88,7 +110,7 @@ Dans cette sortie, chercher les informations suivantes :
 
 Les notes indiquent que Wasmtime exécute `metaverse.wasm` avec la racine `/` préouverte. Si la commande effective contient `--dir=/`, cette option rend la racine accessible au module via WASI, sous réserve des permissions de l’utilisateur du service. La sortie exacte du service et, s’il y en a un, le contenu du script appelé restent à relever sur la VM.
 
-Si le service est exécuté par un timer, le repérer pour savoir quand le module sera relancé :
+Si le service est exécuté par un timer, le repérer pour savoir quand le module sera relancé. Un timer fonctionne comme une alarme : il demande au système de lancer une tâche à un moment prévu :
 
 ```bash
 systemctl list-timers --all | grep -i metaverse
@@ -109,6 +131,10 @@ Wasmtime préouvre /
 le module peut demander l’ouverture de home/flag05/.flag
 ```
 
+C’est le principe de la faille : nous pouvons modifier les instructions d’un programme qui sera exécuté avec les droits de `flag05`.
+
+Imaginez que nous n’avons pas la clé d’un coffre, mais que nous pouvons modifier la liste de tâches d’une personne qui possède cette clé. Cette personne peut alors ouvrir le coffre à notre place. C’est ce que l’on cherche à faire ici. On appelle cela une **élévation de privilèges**.
+
 ## 5. Les termes utiles : WASM, WAT et WASI
 
 | Terme | À retenir pour ce niveau |
@@ -119,7 +145,11 @@ le module peut demander l’ouverture de home/flag05/.flag
 | WASI | L’interface par laquelle un module WASM peut demander des opérations telles que l’ouverture ou la lecture d’un fichier. |
 | Wasmtime | Le programme qui exécute le module et applique les autorisations WASI définies par le service. |
 
-Un module WASM n’a pas accès aux fichiers par défaut. D’après les notes, Wasmtime lui ouvre ici l’accès à `/` : il faut confirmer l’option exacte dans la commande effective. Le point faible décrit par la solution associe un module modifiable, l’identité `flag05` et une racine préouverte trop large.
+Un module WASM n’a pas accès aux fichiers par défaut. WASI lui permet de demander certaines opérations au système, mais seulement dans les limites autorisées par Wasmtime et les permissions Linux.
+
+D’après les notes, Wasmtime lui ouvre ici l’accès à `/` (la racine du système de fichiers) : il faut confirmer l’option exacte dans la commande effective. Cela ne donne pas tous les droits sur la machine : le module reste limité aux permissions de `flag05`.
+
+Nous avons donc trois éléments à réunir : un module modifiable par `level05`, un service qui l’exécute sous `flag05`, et un accès WASI au chemin du flag.
 
 ## 6. Comprendre le but du payload avant son code
 
@@ -141,9 +171,21 @@ home/flag05/.flag          → /home/flag05/.flag
 opt/snowcrash/level05/x    → /opt/snowcrash/level05/x
 ```
 
-La longueur du payload ne vient pas de ces quatre idées simples. Elle vient du fait que WASI demande au programme de fournir explicitement les adresses mémoire de ses chaînes, de ses tampons et de ses résultats.
+La longueur du payload ne vient pas de ces quatre idées simples. Elle vient du fait que WASI demande au programme de préciser où sont rangés les noms des fichiers, où conserver leur contenu et combien d’octets lire ou écrire. Toutes ces informations sont stockées dans la mémoire du module.
 
 ## 7. Lire le payload par étapes
+
+Le payload utilise principalement trois fonctions :
+
+| Fonction | Rôle |
+| --- | --- |
+| `path_open` | Ouvrir un fichier. |
+| `fd_read` | Lire son contenu. |
+| `fd_write` | Écrire un contenu dans un fichier. |
+
+On peut imaginer la mémoire du programme comme des cases numérotées. Le programme range dans ces cases les chemins des fichiers, les informations nécessaires à la lecture et le contenu lu. Un tampon est simplement une zone de mémoire utilisée pour conserver temporairement des données.
+
+Le détail des instructions qui suit est utile pour comprendre le code, mais il n’est pas nécessaire de retenir toutes les adresses mémoire pour expliquer la faille.
 
 Le code ci-dessous reprend intégralement [payload.wat](payload.wat). Les explications après `;;` sont des commentaires : elles ne changent pas le comportement du programme.
 
@@ -255,18 +297,22 @@ Dans la session existante sous `level05`, créer `/tmp/payload.wat` et y coller 
 vi /tmp/payload.wat
 ```
 
-Le fichier de sortie doit appartenir à `level05` et rester lisible après le passage du service. Le créer avant de lancer le service :
+Nous avons besoin d’un fichier de sortie dans lequel le service pourra écrire et que `level05` pourra ensuite lire. Le créer avant le passage du service permet de préparer ses permissions :
 
 ```bash
 touch /opt/snowcrash/level05/x
 chmod 666 /opt/snowcrash/level05/x
 ```
 
+`touch` crée le fichier `x` s’il n’existe pas. `chmod 666` donne les droits de lecture et d’écriture au propriétaire, au groupe et aux autres utilisateurs. Ces droits sont volontairement larges dans le cadre de ce niveau de laboratoire.
+
 Compiler ensuite le WAT en WASM :
 
 ```bash
 wat2wasm /tmp/payload.wat -o /tmp/payload.wasm
 ```
+
+Le fichier WAT est lisible par un humain. `wat2wasm` le convertit au format binaire WASM que Wasmtime peut exécuter.
 
 Puis remplacer le module traité par le service :
 
@@ -278,7 +324,7 @@ cat /tmp/payload.wasm > /opt/snowcrash/level05/metaverse.wasm
 
 ## 9. Attendre le service puis lire le résultat
 
-Après le prochain passage du timer, lire le fichier de sortie :
+Nous n’avons pas besoin de lancer nous-mêmes le programme avec les droits de `flag05` : c’est le service qui s’en charge. Après le prochain passage du timer, lire le fichier de sortie :
 
 ```bash
 cat /opt/snowcrash/level05/x
@@ -290,7 +336,7 @@ Le secret récupéré est :
 viuaaale9huek52boumoomioc
 ```
 
-L’apparition du flag dans `x` confirme les trois éléments du raisonnement : le module remplacé a été exécuté, il a bénéficié des droits de `flag05` et WASI lui a donné accès au chemin du flag.
+Si le flag apparaît dans `x` sur la VM, cela confirme les trois éléments du raisonnement : le module remplacé a été exécuté, il a bénéficié des droits de `flag05` et WASI lui a donné accès au chemin du flag.
 
 ## 10. Passer à `level06`
 
@@ -312,7 +358,7 @@ Résultat attendu : `level06`. Le passage au compte suivant a réussi avec la va
 
 ## À expliquer à l’évaluation
 
-> J’ai trouvé un module WebAssembly modifiable par `level05`. Le service l’exécute sous `flag05` avec la racine préouverte via WASI. J’ai remplacé ce module par un programme WAT qui ouvre le flag, le lit en mémoire puis l’écrit dans un fichier accessible à `level05`.
+> Au départ, je suis connecté en tant que `level05` et je n’ai pas le droit de lire le flag. Je découvre un programme WebAssembly que je peux modifier. Ce programme est exécuté automatiquement par un service avec les droits de `flag05`, qui peut lire le fichier secret. Je remplace donc ce programme par le mien. Grâce à l’accès aux fichiers fourni par WASI, il peut lire le flag et le recopier dans un fichier auquel j’ai accès. La faille vient du fait que je peux modifier un programme exécuté avec les droits d’un autre utilisateur.
 
 ## Traçabilité à conserver
 
