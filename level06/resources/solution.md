@@ -180,16 +180,3 @@ Si Raven traite les lignes avec le motif modifié et conserve les privilèges n�
 ```text
 wizelohxamaiuiia2uinaes4a
 ```
-
-## Passer au niveau suivant
-
-Après avoir confirmé le flag sur la VM, essayer `su - level07` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level07`. Cette connexion reste à valider.
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer l’indice, les chemins, la configuration et les permissions exactes du binaire.
-- [ ] Relever les extraits de `raven.pl` qui chargent la configuration et évaluent le motif ; confirmer les droits effectifs.
-- [ ] Exécuter l’exemple Perl ; vérifier la rétention initiale, les journaux et le nombre de lignes traitées après modification.
-- [ ] Confirmer le flag obtenu et le passage à `level07`.

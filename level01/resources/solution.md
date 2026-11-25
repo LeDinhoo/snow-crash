@@ -79,11 +79,3 @@ Résultat attendu :
 ```text
 level02
 ```
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer l’indice du README et les sorties des recherches de processus.
-- [ ] Relever le propriétaire, la ligne de commande et le statut de `gargoyle.service`.
-- [ ] Comparer l’argument au flag de référence et confirmer le passage à `level02`.

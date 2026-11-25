@@ -83,11 +83,3 @@ Résultat attendu :
 ```text
 level03
 ```
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer l’indice et le chemin du fichier temporaire.
-- [ ] Relever le propriétaire, le type de fichier et ses droits de lecture.
-- [ ] Vérifier la lecture effective et la connexion à `level03`.

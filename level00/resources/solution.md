@@ -138,11 +138,3 @@ Résultat attendu :
 ```text
 level01
 ```
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer le compte, la convention de progression et l’existence de `flag00`.
-- [ ] Relever les sorties de `find`, `ls -l`, `file`, `nm` et `readelf`.
-- [ ] Comparer le contenu de `.flag_data` au flag de référence et confirmer la connexion à `level01`.

@@ -331,16 +331,3 @@ Flag de référence à comparer au fichier de sortie :
 ```text
 viuaaale9huek52boumoomioc
 ```
-
-## Passer au niveau suivant
-
-Après avoir confirmé le flag sur la VM, essayer `su - level06` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level06`. Cette connexion reste à valider.
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer l’accessibilité du README, les chemins, le type et les permissions du module.
-- [ ] Relever `User`, `ExecStart`, les scripts appelés, les options WASI, le répertoire préouvert et le descripteur utilisé.
-- [ ] Identifier le déclenchement du service ; vérifier la disponibilité de `wat2wasm` et les droits du fichier de sortie.
-- [ ] Confirmer que le module produit le flag de référence et que le passage à `level06` fonctionne.

@@ -88,15 +88,3 @@ s19q3m3u4toaequegh8ahpicel
 `Iheartpwnage` contient 12 caractères. Les messages `checking byte 0...` à `checking byte 11...` restent à confirmer dans la sortie complète avant de conclure sur la vérification de chaque caractère.
 
 Si ce message est effectivement affiché, le programme accepte la chaîne comme token.
-
-## Passer au niveau suivant
-
-Après avoir confirmé le flag sur la VM, essayer `su - level10` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level10`. Cette connexion reste à valider.
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Confirmer l’indice, le chemin, le type du binaire et ses permissions.
-- [ ] Relever la sortie de `strings` et les messages complets lors du test du token.
-- [ ] Comparer le flag affiché à la valeur de référence et confirmer le passage à `level10`.

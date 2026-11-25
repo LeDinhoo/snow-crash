@@ -176,16 +176,3 @@ b209ea91ad7a5c2a0b0f4e195ca4
 ```
 
 Confirmer que le fichier est créé par le service lors de ce test, et non lors d’une exécution antérieure.
-
-## Passer au niveau suivant
-
-Après avoir confirmé le flag sur la VM, essayer `su - level04` avec cette valeur comme mot de passe, puis contrôler le compte courant avec `id -un`. Résultat attendu : `level04`. Cette connexion reste à valider.
-
-## Validation sur la VM
-
-Les valeurs et extraits de terminal ci-dessus proviennent de la solution fournie ; ils ne constituent pas une nouvelle preuve d’exécution. Les vérifications suivantes restent à effectuer :
-
-- [ ] Relever la définition du service et les extraits complets qui déterminent le chemin chargé.
-- [ ] Confirmer le refus de lecture, les groupes et les droits de `staging`.
-- [ ] Identifier le timer, vérifier la création du fichier de sortie et ses droits.
-- [ ] Comparer le résultat au flag de référence et confirmer le passage à `level04`.
