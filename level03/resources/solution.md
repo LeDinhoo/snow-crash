@@ -168,31 +168,3 @@ b209ea91ad7a5c2a0b0f4e195ca4
 ```
 
 Le fichier apparaît après le déclenchement du timer. Consulter la liste des timers permet de connaître le prochain passage avant de relire la sortie.
-
-## 6. Passer à `level04`
-
-```bash
-su - level04
-```
-
-Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
-
-```bash
-id -un
-```
-
-Résultat attendu : `level04`. Le passage au compte suivant a réussi avec le secret récupéré, également conservé dans `level03/flag`.
-
-## Pourquoi cette méthode fonctionne
-
-Le service exécute avec les droits de `flag03` un script situé dans un emplacement modifiable par `level03`. Le contrôle du fichier d’instructions permet donc indirectement d’effectuer des opérations autorisées pour `flag03`.
-
-L’exécution doit être déclenchée par le service afin que les instructions CMake bénéficient des droits de `flag03`. Une exécution directe conserverait les droits de `level03`.
-
-## À expliquer à l’évaluation
-
-> J’ai vérifié que `level03` pouvait modifier le fichier CMake chargé par un service exécuté sous `flag03`. J’ai fourni deux instructions : l’une lit le flag, l’autre l’écrit dans un fichier accessible. Le service a exécuté ces instructions avec ses propres droits. J’ai ensuite utilisé le secret pour passer à `level04`.
-
-## Traçabilité à conserver
-
-Conserver les sorties de `id`, `systemctl cat`, `ls -ld`, `systemctl list-timers` et `id -un`. Elles démontrent respectivement le droit d’écriture, l’identité du service, son déclenchement et le passage au compte suivant.

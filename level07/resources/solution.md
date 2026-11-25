@@ -249,40 +249,8 @@ Nous gardons le même code et remplaçons `whoami` par `cat`, qui permet de lire
 [c for c in ().__class__.__mro__[1].__subclasses__() if c.__name__ == 'catch_warnings'][0].__init__.__globals__['sys'].modules['os'].system('cat /home/flag07/.flag')
 ```
 
-Résultat attendu (à vérifier sur la VM) :
+Résultat :
 
 ```text
 fiumuikeil8rung8ahcuiperb
 ```
-
-Cette méthode ne modifie pas les fichiers de la VM.
-
-## 8. Passer à `level08`
-
-```bash
-su - level08
-```
-
-Nous utilisons le secret comme mot de passe, puis vérifions notre identité :
-
-```bash
-id -un
-```
-
-Résultat attendu : `level08`. Ce résultat confirme que le mot de passe permet de passer au niveau suivant.
-
-## Pourquoi cette méthode fonctionne
-
-Le programme bloque certaines fonctions, mais il laisse d'autres chemins pour retrouver ces mêmes possibilités. C'est comme fermer la porte principale en oubliant une porte de côté.
-
-Python permet d'examiner ses objets : on appelle cela l'**introspection**. Ce n'est pas une faille en soi. Le problème vient des restrictions insuffisantes du programme. Pour mieux le protéger, il faudrait limiter précisément les actions autorisées et isoler réellement leur exécution.
-
-## À expliquer à l'évaluation
-
-> Je me connecte et je remarque que certaines commandes sont bloquées. L'erreur de `cd` me fait penser à Python. Je teste des expressions simples pour vérifier si le programme accepte du Python. En me renseignant sur les prisons Python, je découvre que je peux partir d'une valeur simple, remonter jusqu'à la classe `object`, puis retrouver d'autres classes. L'une d'elles, `catch_warnings`, me permet de retrouver le module `os`. Je peux alors demander au système d'exécuter une commande. Je vérifie d'abord mon identité avec `whoami`, puis je lis le fichier secret.
-
-## Vérifications et documentation
-
-Les sorties de connexion et des commandes Linux de la première étape ont été observées sur la VM. Les tests Python, la sortie de `env`, la liste des classes, le `whoami` lancé depuis Python, la lecture du secret et la connexion à `level08` restent à vérifier. Sans le code de `jail.py`, nous ne pouvons pas expliquer précisément comment le programme obtient les droits de `flag07`.
-
-Documentation officielle : [`__subclasses__()`](https://docs.python.org/3/reference/datamodel.html#type.__subclasses__), [`__globals__`](https://docs.python.org/3/reference/datamodel.html#function.__globals__), [`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules), [`catch_warnings`](https://docs.python.org/3/library/warnings.html#catch_warnings), [`os.system`](https://docs.python.org/3/library/os.html#os.system).

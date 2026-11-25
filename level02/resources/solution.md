@@ -83,19 +83,3 @@ Résultat attendu :
 ```text
 level03
 ```
-
-Le passage à `level03` a réussi avec cette valeur. Le secret est également conservé dans le fichier `level02/flag` du dépôt.
-
-## Pourquoi cette méthode fonctionne
-
-Le propriétaire a laissé une information confidentielle dans un fichier temporaire lisible par les autres utilisateurs. Les permissions trop larges et la conservation du fichier après usage exposent son contenu.
-
-Un fichier sensible devrait être créé avec des droits restrictifs, dans un emplacement approprié, puis supprimé dès qu’il n’est plus nécessaire.
-
-## À expliquer à l’évaluation
-
-> L’indice suggérait qu’un « paquet » restait présent après sa livraison. J’ai recherché les fichiers appartenant à `flag02`, puis vérifié les droits du fichier temporaire découvert. Les permissions accordées permettaient directement à `level02` de lire le secret.
-
-## Traçabilité à conserver
-
-Conserver les sorties de `find`, `ls -l`, `file` et `id -un` permet de démontrer chaque transition de la démarche : découverte du fichier, vérification de son type, preuve du droit de lecture et validation du compte obtenu.

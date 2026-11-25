@@ -335,31 +335,3 @@ Le secret récupéré est :
 ```text
 viuaaale9huek52boumoomioc
 ```
-
-Si le flag apparaît dans `x` sur la VM, cela confirme les trois éléments du raisonnement : le module remplacé a été exécuté, il a bénéficié des droits de `flag05` et WASI lui a donné accès au chemin du flag.
-
-## 10. Passer à `level06`
-
-```bash
-su - level06
-```
-
-Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
-
-```bash
-id -un
-```
-
-Résultat attendu : `level06`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level05/flag`.
-
-## Pourquoi cette méthode fonctionne
-
-`level05` ne peut pas lire directement `/home/flag05/.flag`. En revanche, il peut modifier le module que le service exécute. Le service donne ensuite à ce code les droits de `flag05` et l’accès WASI à `/`. Le module peut donc ouvrir le flag, le lire et le recopier dans `x`.
-
-## À expliquer à l’évaluation
-
-> Au départ, je suis connecté en tant que `level05` et je n’ai pas le droit de lire le flag. Je découvre un programme WebAssembly que je peux modifier. Ce programme est exécuté automatiquement par un service avec les droits de `flag05`, qui peut lire le fichier secret. Je remplace donc ce programme par le mien. Grâce à l’accès aux fichiers fourni par WASI, il peut lire le flag et le recopier dans un fichier auquel j’ai accès. La faille vient du fait que je peux modifier un programme exécuté avec les droits d’un autre utilisateur.
-
-## Traçabilité à conserver
-
-Conserver les sorties de `find`, `ls -la`, `file`, `id`, `ls -l`, `systemctl list-unit-files`, `systemctl cat`, `systemctl list-timers`, `wat2wasm`, `cat x` et `id -un`.

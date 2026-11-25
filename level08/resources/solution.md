@@ -1,43 +1,56 @@
-# Level08 — Socket et défaut d’authentification
+# Level08 — Contourner une authentification par un défaut d’état
 
 ## Objectif
 
-Comprendre comment deux programmes communiquent par un socket Unix et comment une mauvaise gestion des états peut compromettre l’authentification. Le format binaire et le checksum sont nécessaires pour parler au service, mais la faille principale est un contrôle d’autorisation insuffisant.
+Nous sommes connectés avec l’utilisateur `level08` et nous cherchons le secret de `flag08` afin de passer à `level09`.
+
+Un service appelé **Black Sun** peut lire ce secret, mais son accès est normalement protégé par une authentification. Notre objectif est de comprendre son protocole, puis de chercher une erreur qui permette de contourner cette authentification.
+
+Il faut distinguer deux sujets :
+
+| Sujet | Rôle |
+| --- | --- |
+| Le socket, le format binaire, le checksum et le little-endian | Ils permettent de communiquer correctement avec Black Sun. |
+| La mauvaise gestion des états | C’est la faille qui permet de contourner l’authentification. |
+
+Nous ne cassons donc ni un mot de passe ni le checksum. Nous profitons d’une erreur de logique dans le contrôle des autorisations.
 
 ## 1. Découvrir le service
+
+Nous commençons par vérifier notre identité, nos groupes et les fichiers disponibles :
 
 ```bash
 id
 find /opt/snowcrash/level08 -maxdepth 3 -ls
 ```
 
-Les notes indiquent que `level08` appartient au groupe `blacksun`. Deux fichiers intéressants sont présents :
+Les observations conservées indiquent que `level08` appartient au groupe `blacksun`. Deux fichiers sont particulièrement intéressants :
 
-```text
-/opt/snowcrash/level08/blacksun
-/opt/snowcrash/level08/blacksun.c
-```
+| Fichier | Explication |
+| --- | --- |
+| `/opt/snowcrash/level08/blacksun` | Le programme exécutable. |
+| `/opt/snowcrash/level08/blacksun.c` | Le code source qui décrit son fonctionnement. |
 
-Le second contient le code source qui définit le protocole du service :
+Nous lisons le code source :
 
 ```bash
 cat /opt/snowcrash/level08/blacksun.c
 ```
 
-Le source révèle notamment :
+Il révèle notamment :
 
 - le socket `/run/blacksun/blacksun.sock` ;
 - les commandes `HELLO`, `AUTH` et `ADMIN` ;
-- le format des messages ;
-- la logique du checksum ;
+- le format binaire des messages ;
+- le calcul du checksum ;
 - le chemin `/home/flag08/.flag` ;
-- la vérification d’état incorrecte.
+- la vérification incorrecte de l’état de la connexion.
 
-Une présentation complète devra conserver depuis la VM les extraits de `blacksun.c` qui définissent le format et la faille.
+Lire ce fichier revient à consulter le plan d’un coffre-fort : nous pouvons étudier chaque mécanisme pour chercher une erreur de conception.
 
 ## 2. Comprendre le socket Unix
 
-Un socket est un canal de communication entre deux programmes. Ici, le client et Black Sun communiquent localement par un socket Unix :
+Un socket est un canal qui permet à deux programmes de communiquer. Nous pouvons le comparer à une ligne téléphonique locale : notre client appelle Black Sun, puis les deux programmes échangent des messages.
 
 ```text
 client Python
@@ -50,40 +63,73 @@ client Python
 service Black Sun
 ```
 
-Le groupe `blacksun` possède les permissions nécessaires pour contacter ce socket. L’autorisation des opérations administratives dépend ensuite du contrôle d’état implémenté par le service.
+Le groupe `blacksun` possède les permissions nécessaires pour contacter ce socket. Cela nous donne le droit de parler au service, mais pas automatiquement celui d’accéder à ses informations protégées.
 
-La solution exploite le contrôle d’état et laisse intacte la clé `/etc/blacksun/auth.key`.
+Cette différence est importante :
 
-## 3. Comprendre les états d’authentification
+- **communiquer** signifie pouvoir envoyer des messages au programme ;
+- **s’authentifier** signifie prouver son identité ;
+- **être autorisé** signifie avoir le droit d’effectuer une action précise.
 
-Un protocole correct doit distinguer plusieurs étapes :
+La clé `/etc/blacksun/auth.key` sert normalement à l’authentification. La solution ne la lit pas et ne la modifie pas.
+
+## 3. Comprendre la faille
+
+Black Sun reconnaît trois commandes principales :
+
+| Commande | Signification simple |
+| --- | --- |
+| `HELLO` | Commencer la conversation. |
+| `AUTH` | Prouver notre identité. |
+| `ADMIN` | Demander l’accès à une fonction protégée. |
+
+### Fonctionnement attendu
+
+Un protocole correct doit attendre la réussite de l’authentification avant d’autoriser une commande administrative :
 
 ```text
-connexion initiale
-        │
-        ▼
-identification du client
-        │
-        ▼
-preuve d’authentification vérifiée
-        │
-        ▼
-autorisation des commandes protégées
+HELLO
+  │
+  ▼
+attente de l’authentification
+  │
+  ▼
+AUTH vérifiée
+  │
+  ▼
+ADMIN autorisé
 ```
 
-Dans le code étudié, `HELLO` fait passer l’état interne de la connexion à `AUTH`. La macro `CHECK_STATE` utilisée pour `ADMIN` accepte ensuite un état supérieur ou égal à `AUTH`, au lieu d’exiger que l’authentification administrative soit réellement terminée.
+### Fonctionnement vulnérable
 
-La séquence devient donc :
+Dans le code étudié, `HELLO` place la connexion dans un état nommé `AUTH`. Cet état devrait seulement signifier **« en attente d’authentification »**.
+
+Cependant, la macro `CHECK_STATE` utilisée pour `ADMIN` accepte déjà un état supérieur ou égal à `AUTH`. Le service confond donc le fait d’avoir atteint l’étape d’authentification avec le fait de l’avoir réussie.
+
+La séquence suivante suffit alors :
 
 ```text
 HELLO → état AUTH → ADMIN accepté
 ```
 
-La séquence utile se limite à `HELLO`, puis `ADMIN`. L’état intermédiaire obtenu après `HELLO` est traité à tort comme une autorisation suffisante.
+La commande `AUTH` et la preuve d’identité sont entièrement sautées.
 
-## 4. Comprendre l’encodage binaire
+Imaginons une banque : nous disons bonjour à l’agent de sécurité, qui devrait ensuite nous demander une pièce d’identité. Mais il considère par erreur que le simple fait d’être arrivé à l’étape du contrôle signifie que notre identité a déjà été validée. Il nous laisse donc entrer dans la zone protégée sans effectuer le contrôle.
 
-Le client [client.py](client.py) utilise deux modules de la bibliothèque standard :
+## 4. Pourquoi utiliser un script Python ?
+
+Connaître la faille ne suffit pas : il faut encore envoyer les commandes dans le format exact attendu par Black Sun.
+
+Le service n’attend pas directement le texte suivant :
+
+```text
+HELLO
+ADMIN
+```
+
+Il attend des messages binaires composés d’un en-tête et, parfois, d’un contenu. Le fichier [client.py](client.py) sert donc de traducteur entre nos intentions et le protocole de Black Sun.
+
+Il utilise deux modules de la bibliothèque standard de Python :
 
 ```python
 import socket
@@ -92,27 +138,44 @@ import struct
 
 | Module | Rôle |
 | --- | --- |
-| `socket` | Se connecter au socket Unix et échanger des octets. |
-| `struct` | Encoder des entiers Python dans le format binaire attendu par le programme C. |
+| `socket` | Ouvrir la communication avec Black Sun et échanger des octets. |
+| `struct` | Encoder les nombres dans le format binaire attendu par le programme C. |
 
-Exemple indépendant du protocole :
+Le script ne crée pas la faille. Il automatise simplement l’envoi des deux messages qui permettent de l’exploiter.
+
+## 5. Comprendre la structure d’un message
+
+Un message peut être comparé à un colis : l’en-tête est son étiquette et le payload est son contenu.
+
+| Élément | Taille | Rôle |
+| --- | ---: | --- |
+| Version, état et commande | 1 octet | Indiquer la version du protocole, l’étape de la conversation et l’action demandée. |
+| Longueur | 4 octets | Indiquer la taille du payload. |
+| Checksum | 2 octets | Fournir une valeur de contrôle calculée à partir du payload. |
+| Octet réservé | 1 octet | Emplacement supplémentaire fixé à zéro. |
+| Payload | Taille variable | Contenir les données du message. |
+
+L’en-tête mesure donc huit octets. Le premier octet rassemble trois informations :
 
 ```python
-import struct
-print(struct.pack("<H", 258).hex(" "))
+first_byte = VERSION | (state << 3) | (command << 5)
 ```
 
-Résultat :
+Les sept octets suivants sont construits ainsi :
 
-```text
-02 01
+```python
+header = bytes([first_byte]) + struct.pack(
+    "<IHB", len(payload), checksum(payload), 0
+)
 ```
 
-`H` représente un entier non signé de 16 bits. Le symbole `<` impose l’ordre *little-endian*, dans lequel l’octet de poids faible est placé en premier. La valeur `258`, soit `0x0102`, devient donc `02 01`.
+## 6. Comprendre le checksum
 
-## 5. Comprendre le checksum
+Le checksum est une valeur de contrôle. Le service le recalcule à partir du payload, puis vérifie que le résultat correspond à celui placé dans l’en-tête.
 
-Le client reproduit la formule du code C :
+Nous pouvons le comparer à un code de contrôle calculé à partir du contenu d’un colis. Si le contenu change pendant le transport, le code recalculé à l’arrivée ne correspond plus. Le vrai calcul est différent, mais son rôle reste de détecter une incohérence dans le message.
+
+Le client reproduit la formule trouvée dans le code C :
 
 ```python
 def checksum(payload):
@@ -122,91 +185,112 @@ def checksum(payload):
     return result
 ```
 
-L’opérateur `^` réalise un XOR bit à bit : un bit vaut `1` lorsque les deux bits comparés sont différents.
+L’opérateur `^` effectue un XOR bit à bit. Son fonctionnement de base est le suivant :
 
-Pour le payload `ad de`, le calcul est :
+| Premier bit | Second bit | Résultat XOR |
+| ---: | ---: | ---: |
+| 0 | 0 | 0 |
+| 0 | 1 | 1 |
+| 1 | 0 | 1 |
+| 1 | 1 | 0 |
+
+Pour le payload `ad de`, le calcul donne :
 
 ```text
 (0xad XOR 0) XOR (0xde XOR 1) = 0x72
 ```
 
-Le checksum contrôle la structure et l’intégrité du message. L’identité de l’expéditeur doit être vérifiée séparément par le mécanisme d’authentification.
+Le checksum n’est pas un mot de passe et ne prouve pas notre identité. Il sert seulement à produire un message que Black Sun considère comme bien formé.
 
-## 6. Construire l’en-tête
+## 7. Comprendre le little-endian
 
-Le premier octet combine la version, l’état et la commande :
+Le *little-endian* est une convention qui définit l’ordre des octets utilisés pour représenter un nombre.
 
-```python
-first_byte = VERSION | (state << 3) | (command << 5)
+Prenons la valeur `0xDEAD`, composée des deux octets `DE` et `AD`. Dans le message, elle est rangée ainsi :
+
+```text
+valeur lisible :      DE AD
+octets little-endian: AD DE
 ```
 
-Les autres champs sont encodés ainsi :
+La valeur ne change pas ; seul l’ordre de rangement de ses octets change. Le symbole `<` utilisé avec `struct.pack()` demande explicitement cet ordre :
 
 ```python
-header = bytes([first_byte]) + struct.pack(
-    "<IHB", len(payload), checksum(payload), 0
-)
+struct.pack("<H", 0xDEAD)
 ```
 
-| Élément | Taille | Rôle |
-| --- | ---: | --- |
-| `first_byte` | 1 octet | Version, état et commande combinés. |
-| `I` | 4 octets | Longueur du payload. |
-| `H` | 2 octets | Checksum. |
-| `B` | 1 octet | Octet réservé, fixé à zéro. |
+Cette instruction produit les octets `ad de`.
 
-L’en-tête complet mesure donc huit octets.
+Le little-endian n’est pas la faille. C’est seulement une règle à respecter pour que le service interprète correctement les nombres envoyés.
+
+## 8. Construire les deux messages
 
 ### Message `HELLO`
 
-Le premier message utilise la commande `HELLO`, l’état initial et le payload `0xDEAD` encodé en little-endian :
+Le premier message utilise la version `1`, l’état initial `0`, la commande `HELLO` numérotée `0` et le payload `0xDEAD` :
 
 ```text
 en-tête : 01 02 00 00 00 72 00 00
 payload : ad de
 ```
 
-- `01` combine la version `1`, l’état `0` et la commande `0` ;
-- `02 00 00 00` représente une longueur de deux octets ;
-- `72 00` représente le checksum `0x72` ;
-- le dernier `00` est l’octet réservé.
+| Octets | Signification |
+| --- | --- |
+| `01` | Version `1`, état `0` et commande `0`. |
+| `02 00 00 00` | Longueur de deux octets. |
+| `72 00` | Checksum `0x72`. |
+| `00` | Octet réservé. |
+| `ad de` | Payload `0xDEAD` en little-endian. |
+
+Black Sun répond `HELLO OK` et place la connexion dans l’état `AUTH`.
 
 ### Message `ADMIN`
 
-Le second message ne contient aucun payload :
+Le second message utilise l’état `1`, la commande `ADMIN` numérotée `2` et aucun payload :
 
 ```text
 49 00 00 00 00 00 00 00
 ```
 
-`0x49` combine la version `1`, l’état `1` et la commande `ADMIN` numérotée `2` :
+Le premier octet vaut `0x49` :
 
 ```text
 1 | (1 << 3) | (2 << 5) = 0x49
 ```
 
-## 7. Comprendre le client
+La longueur et le checksum valent zéro, car le message ne contient aucun payload.
 
-Le script se décompose en quatre responsabilités :
+## 9. Comprendre le client
+
+Le script [client.py](client.py) effectue les actions suivantes :
+
+1. Il ouvre une connexion vers `/run/blacksun/blacksun.sock`.
+2. Il construit le message `HELLO` dans le bon format.
+3. Il calcule le checksum du payload et envoie le message.
+4. Il lit la réponse `HELLO OK`.
+5. Il construit et envoie directement le message `ADMIN`, sans envoyer de commande `AUTH`.
+6. Il lit la réponse administrative et le secret affiché par le service.
+
+Les fonctions principales ont chacune un rôle précis :
 
 | Partie | Rôle |
 | --- | --- |
 | `checksum()` | Calculer la valeur de contrôle du payload. |
 | `struct.pack()` | Encoder les champs numériques dans l’ordre attendu. |
-| `sock.sendall()` | Envoyer l’intégralité de chaque message. |
+| `sock.sendall()` | Envoyer l’intégralité du message. |
 | `sock.recv()` | Lire les réponses du service. |
 
-Le bloc `with socket.socket(...) as sock` garantit la fermeture du socket à la sortie du bloc, y compris si une erreur se produit.
+Le bloc `with socket.socket(...) as sock` ferme automatiquement le socket à la fin, même si une erreur se produit.
 
-## 8. Exécuter le client
+## 10. Exécuter le client
 
-Dans la session existante sous `level08`, créer le client et y coller le contenu exact de [client.py](client.py) :
+Dans la session ouverte avec `level08`, nous créons un fichier temporaire et y copions le contenu exact de [client.py](client.py) :
 
 ```bash
 vi /tmp/blacksun_client.py
 ```
 
-Lancer ensuite le client :
+Nous lançons ensuite le script :
 
 ```bash
 python3 /tmp/blacksun_client.py
@@ -220,38 +304,4 @@ ACCESS GRANTED
 FLAG=s5cAhoAfNT9GrgqykhZavyBg9
 ```
 
-## 9. Passer à `level09`
-
-```bash
-su - level09
-```
-
-Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
-
-```bash
-id -un
-```
-
-Résultat attendu : `level09`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level08/flag`.
-
-## Pourquoi cette méthode fonctionne
-
-Le service confond progression dans le protocole et authentification réussie. `HELLO` place la connexion dans un état qui satisfait déjà la condition trop permissive d’`ADMIN`. Le client respecte le format binaire et le checksum attendus, puis cette condition autorise la commande.
-
-L’erreur se situe dans la logique métier et le contrôle d’autorisation. Le XOR et le socket Unix servent uniquement au transport du message.
-
-## Limites et portabilité
-
-Le code C utilise des champs de bits dont l’organisation dépend de l’ABI. Les octets documentés correspondent à la VM x86_64 du niveau ; une autre ABI peut produire un ordre différent. Le client impose explicitement le little-endian pour les autres champs avec le préfixe `<` de `struct`.
-
-La vérification locale couvre la syntaxe du client et les octets générés. La VM fournit la validation du service, de sa réponse et du flag.
-
-## À expliquer à l’évaluation
-
-> J’ai lu le code source pour reconstruire le protocole. `HELLO` fait passer la connexion à l’état `AUTH`, puis la vérification d’`ADMIN` accepte déjà cet état. Mon client encode deux messages conformes et calcule leur checksum. La séquence `HELLO` puis `ADMIN` obtient donc le flag, puis `su` permet de passer à `level09`.
-
-## Traçabilité et références
-
-Conserver les permissions du socket, les extraits de `blacksun.c` définissant l’en-tête, le checksum et `CHECK_STATE`, les octets envoyés, les réponses du service et le résultat de `id -un`.
-
-Références utiles : [Python — `socket`](https://docs.python.org/3/library/socket.html#socket.AF_UNIX), [Python — `struct`](https://docs.python.org/3/library/struct.html) et [GCC — organisation des champs de bits](https://gcc.gnu.org/onlinedocs/gcc/Structures-unions-enumerations-and-bit-fields-implementation.html).
+Le service nous donne le secret sans que nous ayons fourni la clé d’authentification.

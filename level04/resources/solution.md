@@ -182,31 +182,3 @@ ne2searoevaevoem4ov4ar8ap
 ```
 
 `tail -n 3` limite l’affichage aux trois dernières lignes, là où la sortie de la macro ajoutée est attendue.
-
-## 10. Passer à `level05`
-
-```bash
-su - level05
-```
-
-Saisir le secret comme mot de passe, puis vérifier l’identité obtenue :
-
-```bash
-id -un
-```
-
-Résultat attendu : `level05`. Le passage au compte suivant a réussi avec la valeur récupérée, également conservée dans `level04/flag`.
-
-## Pourquoi cette méthode fonctionne
-
-Le service interprète comme du code un modèle contrôlé par un utilisateur moins privilégié. Lorsque Babel traite `template.m4`, `esyscmd` s’exécute avec les droits de `flag04`, et non ceux de `level04`.
-
-Les niveaux 03 et 04 exploitent la même erreur de confiance : un service privilégié charge un fichier modifiable par un autre utilisateur. Seuls le langage interprété et le mécanisme de sortie changent.
-
-## À expliquer à l’évaluation
-
-> J’ai vérifié que `level04` pouvait modifier un modèle M4 traité par un service exécuté sous `flag04`. J’ai ajouté une macro `esyscmd` qui lit le flag, puis récupéré sa sortie dans le fichier généré. J’ai ensuite validé le secret avec `level05`.
-
-## Traçabilité à conserver
-
-Conserver les sorties de `find`, de `ls -la`, de `systemctl list-unit-files`, de `systemctl cat`, de `cat babel.sh`, de `id`, de `ls -l`, de `tail` et de `id -un`.
